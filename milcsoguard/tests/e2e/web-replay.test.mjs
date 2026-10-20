@@ -92,6 +92,8 @@ await page.click('tr.clickable');
 await page.waitForSelector('.modal video');
 const loaded = await page.waitForFunction(() => { const v = document.querySelector('.modal video'); return v && v.src.startsWith('blob:') && v.readyState >= 2; }, null, { timeout: 10000 }).then(() => true).catch(() => false);
 check(loaded, 'the replay plays in the dashboard (blob: video, CSP media-src allows it)');
+const dur = await page.waitForFunction(() => { const v = document.querySelector('.modal video'); return v && Number.isFinite(v.duration) && v.duration > 1 ? v.duration : null; }, null, { timeout: 8000 }).then((h) => h.jsonValue()).catch(() => null);
+check(dur !== null, `real duration is known, the seek bar works (${dur} s)`);
 check((await page.$$('.modal .replay-part')).length === 2, 'both parts shown on the timeline');
 const next = await page.waitForFunction(() => document.querySelectorAll('.modal .replay-part')[1]?.classList.contains('active'), null, { timeout: 8000 }).then(() => true).catch(() => false);
 check(next, 'continues with the next part automatically');

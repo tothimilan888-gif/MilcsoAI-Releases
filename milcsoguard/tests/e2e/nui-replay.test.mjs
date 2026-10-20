@@ -113,6 +113,8 @@ for (const [idx, data] of partsB64.entries()) {
 }
 const meta = await page.waitForFunction(() => { const v = document.querySelector('#rv'); return v && v.src.startsWith('blob:') && v.readyState >= 1; }, null, { timeout: 8000 }).then(() => true).catch(() => false);
 check(meta, 'the recorded WebM loads in the in-game player');
+const nuiDur = await page.waitForFunction(() => { const v = document.querySelector('#rv'); return v && Number.isFinite(v.duration) && v.duration > 1 ? v.duration : null; }, null, { timeout: 8000 }).then((h) => h.jsonValue()).catch(() => null);
+check(nuiDur !== null, `in-game player knows the real duration (${nuiDur} s)`);
 const advanced = await page.waitForFunction(() => document.querySelector('#rvPart').textContent.startsWith('2.'), null, { timeout: 12000 }).then(() => true).catch(() => false);
 check(advanced, 'playback continues with the next part when one ends');
 await page.screenshot({ path: path.join(here, 'artifacts/nui-replay-player.png') });

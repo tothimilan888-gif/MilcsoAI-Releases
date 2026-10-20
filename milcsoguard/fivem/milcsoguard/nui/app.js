@@ -458,6 +458,21 @@
     player.urls = [];
   }
 
+  // MediaRecorder WebM has no duration header (Chromium reports Infinity, the seek bar is useless).
+  // Seeking far past the end makes the browser scan the file and learn the real duration.
+  function fixDuration(v, then) {
+    if (Number.isFinite(v.duration)) return then();
+    v.dataset.fixing = '1';
+    const back = () => {
+      v.removeEventListener('timeupdate', back);
+      v.currentTime = 0;
+      delete v.dataset.fixing;
+      then();
+    };
+    v.addEventListener('timeupdate', back);
+    v.currentTime = 1e101;
+  }
+
   function playPart(i) {
     const v = $('#rv');
     if (!v) return;
@@ -465,8 +480,8 @@
     $('#rvPart').textContent = `${i + 1}. rész / ${player.total}${i === player.total - 1 ? ' – a végén a ban / kérés pillanata' : ''}`;
     if (!player.urls[i]) { $('#rvStatus').textContent = 'Betöltés…'; $('#rvStatus').classList.remove('hidden'); return; }
     $('#rvStatus').classList.add('hidden');
+    v.onloadedmetadata = () => fixDuration(v, () => v.play().catch(() => undefined));
     v.src = player.urls[i];
-    v.play().catch(() => undefined);
   }
 
   async function playReplay(rep) {
@@ -484,7 +499,7 @@
       <div class="row"><span class="muted small" id="rvPart" style="margin-right:auto"></span><button class="btn" id="rvRestart">Elejétől</button><button class="btn primary" id="rvClose">Bezárás</button></div>
     </div>`);
     m.classList.remove('hidden');
-    $('#rv').onended = () => { if (player.current + 1 < player.total) playPart(player.current + 1); };
+    $('#rv').onended = (e) => { if (!e.target.dataset.fixing && player.current + 1 < player.total) playPart(player.current + 1); };
     $('#rvRestart').onclick = () => playPart(0);
     $('#rvClose').onclick = () => { m.classList.add('hidden'); m.innerHTML = ''; stopPlayer(); };
     playPart(0);

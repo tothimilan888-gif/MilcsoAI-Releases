@@ -62,7 +62,7 @@
     if (!gl) throw new Error('WebGL unavailable');
 
     const program = gl.createProgram();
-    gl.attachShader(program, compile(gl, gl.VERTEX_SHADER, 'attribute vec2 a_pos; varying vec2 v_uv; void main() { v_uv = vec2((a_pos.x + 1.0) * 0.5, 1.0 - (a_pos.y + 1.0) * 0.5); gl_Position = vec4(a_pos, 0.0, 1.0); }'));
+    gl.attachShader(program, compile(gl, gl.VERTEX_SHADER, 'attribute vec2 a_pos; varying vec2 v_uv; void main() { v_uv = vec2((a_pos.x + 1.0) * 0.5, (a_pos.y + 1.0) * 0.5); gl_Position = vec4(a_pos, 0.0, 1.0); }'));
     gl.attachShader(program, compile(gl, gl.FRAGMENT_SHADER, 'precision mediump float; varying vec2 v_uv; uniform sampler2D u_tex; void main() { gl_FragColor = vec4(texture2D(u_tex, v_uv).rgb, 1.0); }'));
     gl.linkProgram(program);
     if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error('program: ' + gl.getProgramInfoLog(program));
@@ -75,6 +75,9 @@
     gl.enableVertexAttribArray(loc);
     gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
 
+    // The game texture is bottom-up like any GL texture, so v_uv needs no flip here (screenshot-basic
+    // flips because it reads the pixels back with readPixels; a canvas stream does not). Verified on a
+    // real client: with the flip the recording was upside down.
     // Same calls, same order as @citizenfx/three uploads a CfxTexture.
     const tex = gl.createTexture();
     gl.activeTexture(gl.TEXTURE0);

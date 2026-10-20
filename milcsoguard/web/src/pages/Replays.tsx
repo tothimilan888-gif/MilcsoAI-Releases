@@ -15,6 +15,23 @@ const fmtSize = (b: number) => (b >= 1024 * 1024 ? `${(b / 1024 / 1024).toFixed(
 const fmtSecs = (ms: number) => `${Math.round(ms / 1000)} mp`;
 
 /**
+ * MediaRecorder WebM has no duration header (Chromium reports Infinity and the seek bar is useless).
+ * Seeking far past the end makes the browser scan the file and learn the real duration.
+ */
+function fixDuration(v: HTMLVideoElement, then: () => void) {
+  if (Number.isFinite(v.duration)) return then();
+  v.dataset.fixing = '1';
+  const back = () => {
+    v.removeEventListener('timeupdate', back);
+    v.currentTime = 0;
+    delete v.dataset.fixing;
+    then();
+  };
+  v.addEventListener('timeupdate', back);
+  v.currentTime = 1e101;
+}
+
+/**
  * Plays a replay: each part is a standalone WebM (the recorder restarts every few seconds), fetched
  * with the session cookie and played back to back. The end of the last part is the moment of the
  * ban / request.
@@ -56,8 +73,8 @@ export function ReplayPlayer({ replay }: { replay: Replay }) {
     const v = video.current;
     const src = urls[current];
     if (!v || !src || v.src === src) return;
+    v.onloadedmetadata = () => fixDuration(v, () => void v.play().catch(() => undefined));
     v.src = src;
-    void v.play().catch(() => undefined);
   }, [urls, current]);
 
   if (replay.status !== 'ready') {
@@ -69,7 +86,7 @@ export function ReplayPlayer({ replay }: { replay: Replay }) {
   return (
     <div className="replay">
       <div className="video-wrap">
-        <video ref={video} controls muted playsInline onEnded={() => setCurrent((c) => (c + 1 < parts.length ? c + 1 : c))} aria-label={`Visszajátszás: ${replay.player_name}`} />
+        <video ref={video} controls muted playsInline onEnded={(e) => { if (!e.currentTarget.dataset.fixing) setCurrent((c) => (c + 1 < parts.length ? c + 1 : c)); }} aria-label={`Visszajátszás: ${replay.player_name}`} />
         {!urls[current] && !error && <div className="video-status">Betöltés…</div>}
         {error && <div className="video-status">{error}</div>}
       </div>

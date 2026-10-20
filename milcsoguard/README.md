@@ -66,7 +66,7 @@ Majd: dashboard → szerver létrehozása → API-kulcs → `server.cfg` (`set m
 ## Amit őszintén tudni kell
 
 * **Nem futott valódi FXServeren.** A fejlesztői környezetben nem volt FiveM szerver; a resource egy FXServer mockon és élő backend ellen lett tesztelve. A natívok és eventek létezését és mezőit a `citizenfx/fivem` forrásból ellenőriztük, de a küszöbértékeket (sebesség, távolság, minták) **saját tesztszerveren kalibrálni kell** – ezért alapból a legtöbb mozgás-modul csak figyelmeztet.
-* **POV visszajátszás:** a játékkép kiolvasása a CitizenFX hivatalos `screenshot-basic` módszerével történik (forrásból ellenőrizve), de **valódi FiveM kliensen nem lett kipróbálva**: a tesztekben (headless Chromium) fekete a kép. A felvevő a játékos gépén fut, egy csaló blokkolhatja; a felvétel bizonyíték, nem perdöntő. Részletek: [REPLAY.md](docs/REPLAY.md).
+* **POV visszajátszás:** a játékkép kiolvasása a CitizenFX hivatalos `screenshot-basic` módszerével történik, és valódi FiveM kliensen működik (az automatikus tesztekben, headless Chromiumban fekete a kép, ott csak a felvétel/feltöltés/lejátszás ellenőrizhető). A felvevő a játékos gépén fut, egy csaló blokkolhatja; a felvétel bizonyíték, nem perdöntő. Részletek: [REPLAY.md](docs/REPLAY.md).
 * **A Docker image buildje nem lett lefuttatva** (nem volt Docker daemon); a produkciós Node build igen.
 * **Nincs implementálva:** screenshot bizonyíték, aimbot statisztikai elemzés, memória/injektor detektálás (szándékosan), `APP_ENCRYPTION_KEY` rotáció, WebAuthn.
 * **FiveM korlát:** más resource-ok net eventjeire nincs globális hook – ezeket a `CheckEvent` exporttal kell bekötni.
