@@ -1,0 +1,44 @@
+# Render Blueprint: MilcsoGuard backend + dashboard (one Docker web service) + PostgreSQL.
+# New > Blueprint > select this repository. See milcsoguard/docs/RENDER.md.
+#
+# NOTE: written from the documented Blueprint syntax, but NOT verified against a live Render
+# account. Plan names change over time – if Render rejects a plan, pick the current equivalent in
+# the dashboard (web: smallest PAID instance; database: smallest PAID Postgres).
+databases:
+  - name: milcsoguard-db
+    databaseName: milcsoguard
+    user: milcsoguard
+    plan: basic-256mb
+
+services:
+  - type: web
+    name: milcsoguard
+    runtime: docker
+    plan: starter            # the free plan sleeps after idle -> unusable (the game server needs constant heartbeats)
+    dockerfilePath: ./milcsoguard/Dockerfile
+    dockerContext: ./milcsoguard
+    healthCheckPath: /readyz
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: milcsoguard-db
+          property: connectionString
+      - key: APP_ENCRYPTION_KEY   # 32 bytes base64; Render's generated value is a 256-bit base64 string
+        generateValue: true
+      - key: TRUST_PROXY
+        value: "true"
+      - key: COOKIE_SECURE
+        value: "true"
+      - key: LOG_LEVEL
+        value: info
+      # First owner (this service has no shell on every plan). Fill these in the dashboard BEFORE the
+      # first deploy; they only act while no owner exists, and must be removed afterwards.
+      - key: BOOTSTRAP_OWNER_EMAIL
+        sync: false
+      - key: BOOTSTRAP_OWNER_USERNAME
+        sync: false
+      - key: BOOTSTRAP_OWNER_PASSWORD
+        sync: false

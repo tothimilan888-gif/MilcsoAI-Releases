@@ -38,6 +38,7 @@ Majd: dashboard → szerver létrehozása → API-kulcs → `server.cfg` (`set m
 |---|---|
 | [ARCHITECTURE.md](docs/ARCHITECTURE.md) | projektfelmérés, architektúra, bizalmi modell, ellenőrzött API-k |
 | [INSTALL.md](docs/INSTALL.md) | telepítés (Docker / kézi), FiveM beállítás |
+| [RENDER.md](docs/RENDER.md) | telepítés Renderre (`render.yaml`), Cloudflare domain |
 | [CONFIGURATION.md](docs/CONFIGURATION.md) | konfigurációs rétegek, validáció, minden kulcs |
 | [DETECTIONS.md](docs/DETECTIONS.md) | modulok, **mit tud és mit nem**, exportok, ajánlott convarok |
 | [PERMISSIONS.md](docs/PERMISSIONS.md) | jogosultsági mátrix, eszkalációvédelem, in-game jogok |

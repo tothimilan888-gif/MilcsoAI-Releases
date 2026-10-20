@@ -78,6 +78,7 @@ Lásd `backend/.env.example` (minden változó induláskor validálva; hiányzó
 | `RATE_LIMIT_PER_MINUTE`, `LOGIN_RATE_LIMIT`, `LOGIN_MAX_ATTEMPTS`, `LOGIN_LOCK_MINUTES` | Rate limit és zárolás |
 | `RETENTION_JOB_MINUTES` | Karbantartó job gyakorisága |
 | `GAME_HEARTBEAT_STALE_SECONDS` | Ennyi heartbeat nélkül a szerver offline |
+| `BOOTSTRAP_OWNER_EMAIL/_USERNAME/_PASSWORD` | Az első platform owner létrehozása shell nélküli hostokon (Render). Csak akkor hat, ha még nincs owner; első belépéskor jelszócsere kötelező; utána töröld őket |
 | `ALLOW_INSECURE_GAME_HTTP` | Csak fejlesztéshez; produkcióban tiltott (a backend nem indul) |
 
 ## Adatmegőrzés

@@ -1,0 +1,8 @@
+**/node_modules
+**/dist
+**/.env
+.git
+tests
+docs
+fivem
+**/*.log

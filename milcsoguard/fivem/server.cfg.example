@@ -1,0 +1,21 @@
+# MilcsoGuard – példa a server.cfg-hez (a saját szervered beállításai mellé)
+
+# --- kötelező a szerveroldali ellenőrzésekhez ---
+set onesync on
+
+# --- ajánlott védelmek (lásd docs/DETECTIONS.md) ---
+set sv_entityLockdown relaxed
+set sv_filterRequestControl 2
+
+# --- backend kapcsolat: csak 'set' (NEM 'setr' – az a kliensekhez is eljut!) ---
+set milcsoguard_api_url "https://milcsoguard-xxxx.onrender.com"
+set milcsoguard_api_key "mgk_xxxxxxxxxx_IDE_AZ_API_KULCS"
+
+# --- játékon belüli adminok (példa; egyéb lehetőségek: docs/PERMISSIONS.md) ---
+add_ace group.admin milcsoguard.role.administrator allow
+add_principal identifier.license:IDE_A_LICENSE_AZONOSITOD group.admin
+
+# --- indítási sorrend: framework és inventory UTÁN ---
+# ensure es_extended
+# ensure ox_inventory
+ensure milcsoguard

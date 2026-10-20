@@ -33,6 +33,8 @@ docker compose exec api node dist/scripts/create-owner.js --email you@example.co
 # Ideiglenes jelszót ír ki – első belépéskor kötelező lecserélni.
 ```
 
+> Hosting Renderen: lásd [RENDER.md](RENDER.md) (a repó gyökerében lévő `render.yaml`-lal).
+
 ## 1b. Backend – kézi telepítés
 
 ```bash

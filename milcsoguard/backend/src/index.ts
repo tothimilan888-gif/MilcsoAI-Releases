@@ -3,11 +3,13 @@ import { loadConfig } from './config.js';
 import { createPool } from './db/pool.js';
 import { migrateUp } from './db/migrate.js';
 import { scheduleMaintenance } from './jobs/maintenance.js';
+import { bootstrapOwner } from './services/bootstrap.js';
 
 async function main() {
   const config = loadConfig();
   const db = createPool(config.DATABASE_URL, config.DATABASE_POOL_MAX);
   await migrateUp(db);
+  await bootstrapOwner(db, process.env, (m) => console.log(`[bootstrap] ${m}`));
   const app = await buildApp({ config, db });
   const stopJobs = scheduleMaintenance(app);
 
