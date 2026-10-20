@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="hu">
+<head>
+<meta charset="utf-8">
+<title>Játékos oldal – szimuláció</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #05070c; color: #e8eaf2; font-family: 'Segoe UI', Inter, system-ui, sans-serif; }
+  .badge-sim { position: fixed; top: 14px; left: 14px; z-index: 50; background: rgba(250,178,25,.16); border: 1px solid rgba(250,178,25,.5); color: #fcd34d; padding: 6px 12px; border-radius: 8px; font-size: 13px; font-weight: 600; }
+  .scene { position: absolute; inset: 0; display: none; }
+  .scene.on { display: block; animation: fade .5s ease; }
+  @keyframes fade { from { opacity: 0 } to { opacity: 1 } }
+  .center { display: grid; place-items: center; height: 100%; text-align: center; padding: 40px; }
+  h1 { font-size: 44px; margin: 0 0 12px; letter-spacing: -0.5px; }
+  h2 { font-size: 30px; margin: 0 0 14px; }
+  p { font-size: 20px; color: #b4bacb; max-width: 820px; line-height: 1.5; }
+  .city { background: linear-gradient(180deg, #1b2440 0%, #3a2a55 38%, #f08a5d 62%, #2b2438 62.1%, #11131c 100%); }
+  .skyline { position: absolute; bottom: 38%; left: 0; right: 0; height: 190px; background:
+    linear-gradient(#0b0e18,#0b0e18) 4% 100%/70px 120px no-repeat, linear-gradient(#0b0e18,#0b0e18) 11% 100%/54px 170px no-repeat,
+    linear-gradient(#0b0e18,#0b0e18) 20% 100%/90px 90px no-repeat, linear-gradient(#0b0e18,#0b0e18) 30% 100%/60px 150px no-repeat,
+    linear-gradient(#0b0e18,#0b0e18) 41% 100%/80px 110px no-repeat, linear-gradient(#0b0e18,#0b0e18) 52% 100%/50px 180px no-repeat,
+    linear-gradient(#0b0e18,#0b0e18) 62% 100%/96px 100px no-repeat, linear-gradient(#0b0e18,#0b0e18) 74% 100%/62px 160px no-repeat,
+    linear-gradient(#0b0e18,#0b0e18) 86% 100%/84px 130px no-repeat, linear-gradient(#0b0e18,#0b0e18) 95% 100%/60px 100px no-repeat; }
+  .road { position: absolute; left: 0; right: 0; bottom: 0; height: 38%; background: repeating-linear-gradient(90deg, transparent 0 80px, rgba(255,255,255,.35) 80px 140px) 0 50%/100% 6px no-repeat, #15171f; }
+  .car { position: absolute; bottom: 21%; left: 8%; width: 220px; height: 62px; background: #2dd4bf; border-radius: 22px 38px 8px 8px; box-shadow: 0 0 0 3px #0c3b36 inset; transition: left 6s linear; }
+  .car::before { content: ''; position: absolute; top: -26px; left: 46px; width: 100px; height: 34px; background: #9be8dd; border-radius: 18px 24px 0 0; }
+  .car.go { left: 64%; }
+  .hud { position: absolute; left: 24px; bottom: 24px; display: grid; gap: 8px; width: 280px; }
+  .bar { height: 14px; background: rgba(0,0,0,.5); border-radius: 99px; overflow: hidden; border: 1px solid rgba(255,255,255,.15); }
+  .bar i { display: block; height: 100%; }
+  .bar.hp i { width: 100%; background: #22c55e; } .bar.ar i { width: 60%; background: #3b82f6; }
+  .minimap { position: absolute; left: 24px; top: 70px; width: 170px; height: 170px; border-radius: 50%; background: radial-gradient(#1c2a24, #101a15); border: 3px solid #2d3b33; overflow: hidden; }
+  .minimap .dot { position: absolute; width: 12px; height: 12px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 3px rgba(124,108,255,.8); left: 40px; top: 90px; transition: left .12s, top .12s; }
+  .minimap .dot.far { left: 138px; top: 30px; background: #f87171; }
+  .money { position: absolute; right: 24px; top: 20px; font-size: 24px; font-weight: 700; color: #86efac; }
+  .weapon { position: absolute; right: 24px; bottom: 24px; font-size: 20px; font-weight: 700; background: rgba(0,0,0,.45); padding: 10px 16px; border-radius: 10px; }
+  .notice { position: absolute; top: 80px; left: 50%; transform: translateX(-50%) translateY(-30px); opacity: 0; background: rgba(0,0,0,.78); border-left: 4px solid #fbbf24; padding: 14px 22px; border-radius: 10px; font-size: 18px; transition: .4s; max-width: 760px; z-index: 6; }
+  .notice.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  .flash { position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none; z-index: 5; }
+  .flash.go { animation: fl .5s; } @keyframes fl { 0% { opacity: .85 } 100% { opacity: 0 } }
+  .server { position: absolute; right: 20px; top: 70px; width: 440px; background: rgba(8,10,16,.88); border: 1px solid #2a3145; border-radius: 12px; padding: 14px; font-family: Consolas, monospace; font-size: 13px; z-index: 7; }
+  .server h3 { margin: 0 0 8px; font: 700 12px 'Segoe UI', sans-serif; text-transform: uppercase; letter-spacing: 1px; color: #8a91a8; }
+  .server .l { padding: 5px 0; border-bottom: 1px solid #1c2130; color: #c9d1e8; opacity: 0; transition: .4s; } .server .l.show { opacity: 1; }
+  .sev { padding: 1px 7px; border-radius: 99px; font-weight: 700; font-size: 11px; } .sev.m { background: rgba(250,178,25,.18); color: #fde047; } .sev.h { background: rgba(236,131,90,.2); color: #fdba74; } .sev.ok { background: rgba(12,163,12,.16); color: #86efac; }
+  .kick { background: #0b0d14; } .kick .box { border: 1px solid #3a2530; background: #1a0f14; border-radius: 14px; padding: 36px 48px; max-width: 760px; text-align: left; }
+  .kick .title { color: #fca5a5; font-weight: 700; margin-bottom: 10px; letter-spacing: 1px; text-transform: uppercase; font-size: 14px; }
+  .kick .msg { font-size: 22px; white-space: pre-line; line-height: 1.55; }
+  .connect .box { width: 640px; background: #12151f; border: 1px solid #252b3b; border-radius: 16px; padding: 30px; text-align: left; }
+  .connect .row { padding: 8px 0; font-size: 18px; color: #b4bacb; opacity: 0; transition: .4s; } .connect .row.show { opacity: 1; } .connect .row b { color: #86efac; }
+  .prog { height: 8px; background: #1e2331; border-radius: 99px; overflow: hidden; margin: 16px 0; } .prog i { display: block; height: 100%; width: 0; background: linear-gradient(90deg,#7c6cff,#2dd4bf); transition: width 3.4s linear; }
+  .cap { position: fixed; left: 0; right: 0; bottom: 0; z-index: 60; background: linear-gradient(transparent, rgba(0,0,0,.88) 40%); padding: 46px 40px 22px; font-size: 24px; font-weight: 600; text-align: center; }
+</style>
+</head>
+<body>
+<div class="badge-sim">SZIMULÁCIÓ – nem valódi játékfelvétel. A szövegek a resource valódi üzenetei.</div>
+
+<div class="scene" id="s-title"><div class="center"><div><h1>🎮 A játékos oldala</h1><p>Mit lát és mit érez a játékos – és mit csinál közben a szerver a háttérben?</p></div></div></div>
+
+<div class="scene connect" id="s-connect" style="background:#0b0d14"><div class="center"><div class="box">
+  <h2>Csatlakozás: Milcso RP</h2>
+  <div class="prog"><i id="prog"></i></div>
+  <div class="row" id="c1">Azonosítók kiolvasása (license, Discord…)</div>
+  <div class="row" id="c2">Banlista ellenőrzése – helyi gyorsítótár + backend</div>
+  <div class="row" id="c3">Jogosultság és whitelist lekérdezése</div>
+  <div class="row" id="c4"><b>✓ Belépés engedélyezve</b></div>
+</div></div></div>
+
+<div class="scene city" id="s-play">
+  <div class="skyline"></div><div class="road"></div><div class="car" id="car"></div>
+  <div class="minimap"><div class="dot" id="dot"></div></div>
+  <div class="money">$ 4 210</div>
+  <div class="hud"><div class="bar hp"><i></i></div><div class="bar ar"><i></i></div></div>
+  <div class="weapon" id="weapon">👊 Ököl</div>
+  <div class="notice" id="notice">Szokatlan aktivitást észleltünk a kliensedről. Az esetet naplóztuk.</div>
+  <div class="flash" id="flash"></div>
+  <div class="server" id="server"><h3>Szerver naplója (ezt a játékos nem látja)</h3>
+    <div class="l" id="l0"><span class="sev ok">OK</span> nincs jelzés – szabályos mozgás</div>
+    <div class="l" id="l1"><span class="sev m">MEDIUM</span> movement.teleport → figyelmeztetés<br>távolság 2210 m / 1 mp · kockázat 15</div>
+    <div class="l" id="l2"><span class="sev h">HIGH</span> weapons.blacklist → kick<br>WEAPON_RAILGUN · kockázat 50 · fegyver elvéve</div>
+  </div>
+</div>
+
+<div class="scene kick" id="s-kick"><div class="center"><div class="box"><div class="title">Lecsatlakoztál a szerverről</div><div class="msg" id="kickmsg"></div></div></div></div>
+
+<div class="scene kick" id="s-ban"><div class="center"><div class="box"><div class="title">Csatlakozás elutasítva</div><div class="msg" id="banmsg"></div></div></div></div>
+
+<div class="scene" id="s-offline"><div class="center"><div><h2>És ha a backend leáll?</h2>
+  <p><b style="color:#86efac">A védelem nem áll le.</b> A banok helyben is tárolva vannak, ezért a bannolt játékos ilyenkor sem tud belépni.<br>
+  Az ismeretlen, ártatlan játékos beléphet – <b style="color:#fcd34d">senkit nem bannol le a rendszer tömegesen</b> csak azért, mert a webes oldal nem elérhető.<br>
+  A detektálások sorba kerülnek, és a backend visszatérésekor feltöltődnek.</p></div></div></div>
+
+<div class="cap" id="cap"></div>
+<script>
+  const q = new URLSearchParams(location.search);
+  const CODE = q.get('code') || 'MG-DEMO0000';
+  const REASON = q.get('reason') || 'Tiltott fegyver, ismételt szabályszegés';
+  const UNTIL = q.get('until') || '2026-10-27 12:00';
+  const $ = (id) => document.getElementById(id);
+  const cap = (t) => { $('cap').textContent = t; };
+  const scene = (id) => { document.querySelectorAll('.scene').forEach((s) => s.classList.toggle('on', s.id === id)); };
+  const show = (id) => $(id).classList.add('show');
+  // Same format as Config.Bans.message / Config.Detections.kickMessage in config.lua
+  $('kickmsg').textContent = 'MilcsoGuard: szabálysértő aktivitás miatt kickelve (weapons.blacklist).';
+  $('banmsg').textContent = 'Ki vagy tiltva erről a szerverről.\nOk: ' + REASON + '\nLejár: ' + UNTIL + '\nAzonosító: ' + CODE + '\nFellebbezés: discord.gg/yourserver';
+  const T = [
+    [0, () => { scene('s-title'); cap('1. rész – a játékos oldala'); }],
+    [4000, () => { scene('s-connect'); cap('Csatlakozáskor a szerver ellenőrzi, hogy ki lép be – a játékos ebből csak egy rövid töltőképernyőt lát'); $('prog').style.width = '100%'; }],
+    [5000, () => show('c1')], [7000, () => show('c2')], [9000, () => show('c3')], [11000, () => show('c4')],
+    [13500, () => { scene('s-play'); show('l0'); cap('Szabályos játék: gyaloglás, autózás, fegyvertelen – semmilyen riasztás, semmi nem változik a játékosnak'); $('car').classList.add('go'); }],
+    [20500, () => { cap('Most egy csaló 2 kilométert „teleportál” a térképen'); $('dot').classList.add('far'); $('flash').classList.add('go'); }],
+    [22000, () => { show('l1'); $('notice').classList.add('show'); cap('A szerver észleli: először csak naplóz és figyelmeztet – a játékos ezt az üzenetet kapja'); }],
+    [27500, () => { $('notice').classList.remove('show'); $('weapon').textContent = '🔫 Railgun (tiltott)'; cap('Ezután tiltott fegyvert vesz elő – a szerver ezt is látja, és a fegyvert el is veszi'); }],
+    [30500, () => { show('l2'); $('weapon').textContent = '👊 Ököl'; cap('A két független jelzés együtt már kicket indít'); }],
+    [34000, () => { scene('s-kick'); cap('A játékost a szerver lecsatlakoztatja – ezt az üzenetet látja'); }],
+    [39000, () => { scene('s-connect'); $('c4').classList.remove('show'); cap('Később egy admin véglegesíti a döntést a weben: ban. A játékos újra próbál csatlakozni…'); }],
+    [42500, () => { scene('s-ban'); cap('Elutasítva: az üzenet tartalmazza az okot, a lejáratot és a ban kódját a fellebbezéshez'); }],
+    [49500, () => { scene('s-offline'); cap('Fontos tulajdonság: a védelem a backend nélkül is működik'); }],
+    [58000, () => { scene('s-title'); document.querySelector('#s-title h1').textContent = 'Következik: az admin oldala'; document.querySelector('#s-title p').textContent = 'Webes dashboard és játékon belüli panel'; cap(''); }],
+    [61000, () => { document.title = 'done'; }],
+  ];
+  T.forEach(([ms, fn]) => setTimeout(fn, ms));
+</script>
+</body>
+</html>
