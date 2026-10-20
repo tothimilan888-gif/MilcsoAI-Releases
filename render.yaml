@@ -15,8 +15,8 @@ services:
     name: milcsoguard
     runtime: docker
     plan: starter            # the free plan sleeps after idle -> unusable (the game server needs constant heartbeats)
-    dockerfilePath: ./milcsoguard/Dockerfile
-    dockerContext: ./milcsoguard
+    dockerfilePath: ./Dockerfile
+    dockerContext: ./
     healthCheckPath: /readyz
     autoDeploy: true
     envVars:

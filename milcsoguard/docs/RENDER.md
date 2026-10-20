@@ -8,6 +8,8 @@ A repó gyökerében lévő `render.yaml` egy **Docker web szolgáltatást** (AP
 * Render fiók, a GitHub repó (`tothimilan888-gif/MilcsoAI-Releases`, a MilcsoGuard ágát vagy `main`-t építsd) csatlakoztatva a Renderhez.
 * **Fizetős csomag kell.** Az ingyenes web szolgáltatás tétlenség után elalszik, a játékszerver heartbeatje/parancssora pedig állandó forgalmat vár; az ingyenes adatbázis lejár. A `render.yaml` ezért `starter` webet és fizetős Postgrest kér – az aktuális csomagneveket / árat a Render oldalán ellenőrizd.
 
+> A repó gyökerében van egy `Dockerfile`, így Renderen **nem kell Dockerfile-útvonalat vagy build contextet beállítani**: Language = `Docker`, a többi marad az alapérték (Root Directory üres, Dockerfile Path `./Dockerfile`).
+
 ## 2. Deploy
 1. Render → **New → Blueprint** → válaszd ki a repót (és az ágat).
 2. A Blueprint bekéri a `sync: false` változókat. Töltsd ki **az első deploy előtt**:

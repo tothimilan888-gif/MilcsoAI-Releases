@@ -1,0 +1,8 @@
+**/node_modules
+**/dist
+**/.env
+.git
+milcsoguard/tests
+milcsoguard/docs
+milcsoguard/fivem
+**/*.log
