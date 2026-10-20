@@ -1,0 +1,12 @@
+{
+  "name": "milcsoguard-e2e",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "nui": "node nui.test.mjs",
+    "web": "node web.test.mjs"
+  },
+  "devDependencies": {
+    "playwright-core": "1.63.0"
+  }
+}

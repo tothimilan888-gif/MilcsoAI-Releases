@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="hu">
+<head>
+  <meta charset="utf-8">
+  <title>MilcsoGuard</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="root" class="hidden" role="dialog" aria-modal="true" aria-label="Anticheat admin panel">
+    <aside class="sidebar">
+      <div class="brand">
+        <svg class="logo" viewBox="0 0 32 32" aria-hidden="true">
+          <path d="M16 2 4 7v8c0 7.2 5.1 13.4 12 15 6.9-1.6 12-7.8 12-15V7L16 2z" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/>
+          <path d="M10.5 16.5 14.5 20.5 22 12" fill="none" stroke="var(--accent2)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <div><div class="brand-name" id="brandName">MilcsoGuard</div><div class="brand-tag" id="brandTag">Anticheat</div></div>
+      </div>
+      <nav id="nav"></nav>
+      <div class="sidebar-foot"><span id="roleChip" class="chip"></span><span id="version" class="muted small"></span></div>
+    </aside>
+    <main>
+      <header class="topbar">
+        <h1 id="pageTitle">Dashboard</h1>
+        <div class="topbar-right">
+          <span id="apiStatus" class="status"><i></i><span></span></span>
+          <button class="icon-btn" id="closeBtn" title="Bezárás (Esc)" aria-label="Bezárás">✕</button>
+        </div>
+      </header>
+      <section id="content" class="content" tabindex="-1"></section>
+    </main>
+  </div>
+  <div id="toasts" aria-live="polite"></div>
+  <div id="modal" class="modal hidden" role="dialog" aria-modal="true"></div>
+  <script src="brand.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
