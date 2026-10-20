@@ -147,8 +147,7 @@ describe('players and bans', () => {
   });
 
   it('offline-created bans keep their original start time', async () => {
-    const createdAt = new Date(Date.now() - 2 * 3600_000).toISOString();
-    const res = await g('POST', '/bans', { localId: 'local-ban-0002', identifiers: [LICENSE_B], reason: 'Offline ban', durationSeconds: 3600, createdAt });
+    const res = await g('POST', '/bans', { localId: 'local-ban-0002', identifiers: [LICENSE_B], reason: 'Offline ban', durationSeconds: 3600, ageSeconds: 7200 });
     expect(res.json().expiredBeforeSync).toBe(true);
   });
 

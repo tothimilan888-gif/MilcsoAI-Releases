@@ -50,7 +50,6 @@ export async function buildApp(opts: BuildOptions): Promise<FastifyInstance> {
           },
     trustProxy: config.TRUST_PROXY,
     bodyLimit: 512 * 1024,
-    disableRequestLogging: config.NODE_ENV === 'test',
   });
 
   app.decorate('db', opts.db);
@@ -151,7 +150,9 @@ export async function buildApp(opts: BuildOptions): Promise<FastifyInstance> {
 
   if (config.WEB_DIST_DIR && existsSync(config.WEB_DIST_DIR)) {
     const root = path.resolve(config.WEB_DIST_DIR);
-    await app.register(fastifyStatic, { root, wildcard: false });
+    // wildcard: files are resolved per request, so a rebuilt dashboard is served without a restart.
+    await app.register(fastifyStatic, { root, wildcard: true, index: false });
+    app.get('/', (_req, reply) => reply.sendFile('index.html'));
     // SPA fallback for client-side routes (never for /api).
     app.setNotFoundHandler((req, reply) => {
       if (req.method === 'GET' && !req.url.startsWith('/api/')) return reply.sendFile('index.html');

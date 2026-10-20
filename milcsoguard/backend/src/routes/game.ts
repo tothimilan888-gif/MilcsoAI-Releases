@@ -313,7 +313,8 @@ export default async function gameRoutes(app: FastifyInstance) {
         durationSeconds: z.number().int().min(60).max(MAX_TEMP_BAN_SECONDS).nullable(),
         actor: actorSchema.optional(),
         detectionLocalIds: z.array(z.string().max(64)).max(50).default([]),
-        createdAt: z.coerce.date().optional(),
+        // Seconds the ban waited in the game server's offline queue (relative, so clock skew is irrelevant).
+        ageSeconds: z.number().int().min(0).max(30 * 86400).default(0),
       }),
       req.body,
     );
@@ -323,7 +324,7 @@ export default async function gameRoutes(app: FastifyInstance) {
       ? (await app.db.query<{ id: string }>('SELECT id FROM detections WHERE server_id = $1 AND local_id = ANY($2::text[])', [sid, body.detectionLocalIds])).rows.map((r) => r.id)
       : [];
     // Bans created while the backend was unreachable keep their original start time for the duration.
-    const start = body.createdAt && body.createdAt.getTime() < Date.now() ? body.createdAt.getTime() : Date.now();
+    const start = Date.now() - body.ageSeconds * 1000;
     const expiresAt = body.durationSeconds === null ? null : new Date(start + body.durationSeconds * 1000);
     if (expiresAt && expiresAt.getTime() <= Date.now()) {
       return { ban: null, expiredBeforeSync: true };

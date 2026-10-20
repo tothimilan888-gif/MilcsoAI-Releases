@@ -175,6 +175,11 @@ function Api.flush()
                 elseif head.kind == 'audit' then path = '/admin/audit' end
                 local body = head.data
                 if head.kind == 'revoke' then body = { reason = head.data.reason, actor = head.data.actor } end
+                if head.kind == 'ban' then
+                    body = U.deepCopy(head.data)
+                    body.ageSeconds = math.max(0, os.time() - (head.data.queuedAt or os.time()))
+                    body.queuedAt = nil
+                end
                 local r = path and Api.await(method, path, body) or { ok = false, status = 400, err = 'unknown kind' }
                 if r.ok then
                     if head.kind == 'ban' and MG.Bans then MG.Bans.onRemoteCreated(head.data.localId, r.data and r.data.ban) end

@@ -163,7 +163,9 @@ function Bans.create(opts)
         durationSeconds = opts.durationSeconds,
         actor = opts.actor,
         detectionLocalIds = opts.detectionLocalIds or {},
-        createdAt = U.isoTime(now),
+        -- local timestamp; converted to a relative age when sent, so clock skew between the game
+        -- server and the backend cannot shorten or lengthen a ban that waited in the queue
+        queuedAt = now,
     })
     MG.Api.flush()
     return ban

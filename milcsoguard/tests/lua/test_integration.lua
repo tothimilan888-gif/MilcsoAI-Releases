@@ -362,6 +362,8 @@ describe('admin panel permissions', function()
         local last = backend.bans[#backend.bans]
         expect(last.actor.name).toBe('P31')
         expect(last.durationSeconds).toBe(3600)
+        expect(last.ageSeconds >= 0 and last.ageSeconds < 30).toBe(true)
+        expect(last.queuedAt).toBeNil()
     end)
     it('permission is re-checked on every request (revoked ACE takes effect immediately)', function()
         Mock.ace['31|milcsoguard.role.moderator'] = nil
