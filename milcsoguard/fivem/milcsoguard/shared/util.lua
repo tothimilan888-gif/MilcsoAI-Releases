@@ -129,9 +129,9 @@ local seeded = false
 --- Random v4-style id. Not cryptographic; only used for idempotency keys.
 function U.uuid()
     if not seeded then
-        local t = os and os.time and os.time() or 0
-        local g = (GetGameTimer and GetGameTimer()) or 0
-        math.randomseed(t + g)
+        -- Lua 5.4: randomseed() without arguments seeds from time and address-space randomness,
+        -- so restarts with identical clocks still produce different ids.
+        math.randomseed()
         seeded = true
     end
     local out = {}

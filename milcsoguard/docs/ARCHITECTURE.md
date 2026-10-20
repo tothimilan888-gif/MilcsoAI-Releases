@@ -117,7 +117,7 @@ Framework API-k:
 * ESX: `exports.es_extended:getSharedObject()`, `ESX.GetPlayerFromId`, `xPlayer.getGroup()`, `xPlayer.hasWeapon()`, szerver eventek `esx:addAccountMoney(src, account, money, reason)`, `esx:removeAccountMoney`, `esx:setAccountMoney`.
 * QBCore: `exports['qb-core']:GetCoreObject()`, `QBCore.Functions.GetPlayer`, `QBCore.Functions.HasItem(source, items, amount)`, `QBCore.Functions.HasPermission` (ACE alapú), `QBCore:Server:OnMoneyChange(src, moneytype, amount, 'add'|'remove', reason)`.
 * ox_inventory: `GetCurrentWeapon(inv)`, `GetItemCount(inv, item)`, `registerHook(event, fn, options)` (`swapItems`, `buyItem`, `craftItem`, `createItem`…).
-* screenshot-basic (opcionális): `requestClientScreenshot(player, options, cb)`.
+* screenshot-basic: `requestClientScreenshot(player, options, cb)` – ellenőrizve, de **jelenleg nincs integrálva** (lásd DETECTIONS.md).
 
 ## 7. Jogosultságok
 

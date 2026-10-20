@@ -5,7 +5,7 @@ local Mock = MockFX
 local BASE = os.getenv('MG_CONTRACT_URL')
 local KEY = os.getenv('MG_CONTRACT_KEY')
 if not BASE or not KEY then
-    describe('contract (skipped)', function() it('set MG_CONTRACT_URL and MG_CONTRACT_KEY to run against a live backend', function() end) end)
+    io.write('  (skipped: set MG_CONTRACT_URL and MG_CONTRACT_KEY to run against a live backend)\n')
     return
 end
 
