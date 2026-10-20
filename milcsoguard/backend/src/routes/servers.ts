@@ -12,6 +12,7 @@ const retentionSchema = z.object({
   auditDays: z.number().int().min(30).max(3650),
   systemEventsDays: z.number().int().min(7).max(3650),
   sessionsDays: z.number().int().min(7).max(3650),
+  replaysDays: z.number().int().min(1).max(3650).default(30),
 });
 
 const SERVER_COLUMNS = 'id, name, slug, description, ban_match_types, retention, status_info, last_heartbeat_at, created_at, updated_at';

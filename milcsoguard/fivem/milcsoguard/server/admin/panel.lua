@@ -28,6 +28,16 @@ local function reason(payload)
     return U.sanitize(r, 500)
 end
 
+local function banDuration(admin, payload)
+    if payload.permanent == true then
+        if not admin.perms['bans.permanent'] then return nil, 'Nincs jogosultságod végleges banhoz (bans.permanent).' end
+        return false
+    end
+    local duration = tonumber(payload.durationSeconds)
+    if not duration or duration < 60 or duration > MAX_TEMP_BAN then return nil, 'Érvénytelen időtartam.' end
+    return math.floor(duration)
+end
+
 local function needApi()
     if not MG.Api.enabled() then return 'A backend nincs beállítva (local-only mód).' end
     if not MG.Api.online and not MG.Sync.handshakeDone then return 'A backend jelenleg nem érhető el.' end
@@ -54,7 +64,8 @@ local function playerSummary(p, admin)
     local full = admin.perms['players.identifiers'] == true
     return {
         id = p.src, name = p.name, ping = GetPlayerPing(p.src), risk = MG.Detections.score(p),
-        monitored = (p.monitoredUntil or 0) > MG.State.now(),
+        monitored = (p.monitoredUntil or 0) > MG.State.now(), frozen = p.frozen == true,
+        recorder = p.replayState or 'unknown',
         admin = p.admin and { role = p.admin.label, level = p.admin.level, source = p.admin.source } or nil,
         identifiers = maskIds(U.filterIdentifiers(p.identifiers, { token = true, ip = not full }), full),
         joinedSecondsAgo = math.floor((MG.State.now() - p.joinedAt) / 1000),
@@ -154,22 +165,17 @@ actions['ban.create'] = { 'bans.create', function(src, admin, payload)
     local why = reason(payload)
     if not why then return fail('Indoklás kötelező (min. 3 karakter).') end
     -- Permanent bans must be requested explicitly; a missing duration is an error, not "forever".
-    local duration = nil
-    if payload.permanent == true then
-        if not admin.perms['bans.permanent'] then return fail('Nincs jogosultságod végleges banhoz (bans.permanent).') end
-    else
-        duration = tonumber(payload.durationSeconds)
-        if not duration or duration < 60 or duration > MAX_TEMP_BAN then return fail('Érvénytelen időtartam.') end
-        duration = math.floor(duration)
-    end
+    local duration, derr = banDuration(admin, payload)
+    if duration == nil then return fail(derr) end
+    duration = duration or nil
     local target = MG.State.get(payload.id)
     if not target then return fail('A játékos nincs online.') end
     if target.src == tonumber(src) then return fail('Saját magadat nem bannolhatod.') end
     if protectedTarget(admin, target) then return fail('Azonos vagy magasabb szintű admint nem bannolhatsz.') end
     local ban = MG.Bans.create({ identifiers = target.identifiers, playerName = target.name, reason = why, durationSeconds = duration, actor = Perm.actor(src) })
     Log.info('%s banned %s (%s): %s', admin.label, target.name, duration and U.formatDuration(duration) or 'permanent', why)
-    DropPlayer(tostring(target.src), MG.Bans.message(ban))
-    return ok({ id = ban.id })
+    MG.Bans.enforce(target.src, ban)
+    return ok({ id = ban.id, replay = ban.replayId ~= nil })
 end }
 
 actions['ban.revoke'] = { 'bans.remove', function(src, admin, payload)
@@ -291,6 +297,220 @@ actions['system.status'] = { 'system.view', function()
     return ok(data)
 end }
 
+-- ------------------------------------------------------------------ recently left players / offline ban
+actions['players.recent'] = { 'players.view', function(src, admin)
+    local full = admin.perms['players.identifiers'] == true
+    local out = {}
+    for _, r in ipairs(MG.State.recent) do
+        out[#out + 1] = {
+            key = r.key, name = r.name, id = r.src, reason = r.reason, risk = r.risk, droppedAt = U.isoTime(r.droppedAt),
+            identifiers = maskIds(U.filterIdentifiers(r.identifiers, { token = true, ip = not full }), full),
+        }
+    end
+    return ok(out)
+end }
+
+actions['ban.offline'] = { 'bans.create', function(src, admin, payload)
+    local why = reason(payload)
+    if not why then return fail('Indoklás kötelező (min. 3 karakter).') end
+    local duration, derr = banDuration(admin, payload)
+    if duration == nil then return fail(derr) end
+    local entry
+    for _, r in ipairs(MG.State.recent) do if r.key == payload.key then entry = r break end end
+    if not entry then return fail('A játékos már nincs a listában.') end
+    if entry.adminLevel >= admin.level and admin.level < 100 then return fail('Azonos vagy magasabb szintű admint nem bannolhatsz.') end
+    if MG.State.get(entry.src) and MG.State.get(entry.src).name == entry.name then return fail('A játékos újra online – bannold a Játékosok listából.') end
+    local ban = MG.Bans.create({ identifiers = entry.identifiers, playerName = entry.name, reason = why, durationSeconds = duration or nil, actor = Perm.actor(src) })
+    Log.info('%s banned offline player %s: %s', admin.label, entry.name, why)
+    return ok({ id = ban.id })
+end }
+
+-- ------------------------------------------------------------------ POV replays
+local REPLAY_ERRORS = {
+    disabled = 'A visszajátszás ki van kapcsolva (Config.Replay.enabled).',
+    offline = 'A játékos nincs online.',
+    busy = 'Ettől a játékostól már folyamatban van egy felvétel.',
+}
+
+actions['replay.request'] = { 'replays.request', function(src, admin, payload)
+    if not MG.Api.enabled() then return fail('A visszajátszások a backendben tárolódnak; local-only módban nem elérhető.') end
+    local why = reason(payload)
+    if not why then return fail('Indoklás kötelező (min. 3 karakter).') end
+    local target = MG.State.get(payload.id)
+    if not target then return fail('A játékos nincs online.') end
+    if protectedTarget(admin, target) then return fail('Azonos vagy magasabb szintű admintól nem kérhetsz felvételt.') end
+    local id, err = MG.Replay.capture(target.src, { kind = 'manual', reason = why, actor = Perm.actor(src), requestedBy = src })
+    if not id then return fail(REPLAY_ERRORS[err] or ('Nem sikerült: ' .. tostring(err))) end
+    return ok({ id = id, recorder = target.replayState or 'unknown' })
+end }
+
+actions['replays.list'] = { 'replays.view', function(src, admin, payload)
+    return remote('GET', '/admin/replays' .. query({ page = tonumber(payload.page) or 1, pageSize = 20 }))
+end }
+
+Admin.playing = {}
+actions['replay.play'] = { 'replays.view', function(src, admin, payload)
+    if not MG.Replay.isUuid(payload.id) then return fail('Érvénytelen azonosító.') end
+    local r = remote('GET', '/admin/replays/' .. payload.id)
+    if not r.ok then return r end
+    if r.data.replay.status ~= 'ready' then return fail('Ez a felvétel nem játszható le (' .. tostring(r.data.replay.status) .. ').') end
+    MG.Api.request('POST', '/admin/replays/' .. payload.id .. '/viewed', { actor = Perm.actor(src) }, function() end)
+    local token = U.uuid()
+    Admin.playing[src] = token
+    local parts = r.data.parts or {}
+    -- Streamed after the response; each part is a few hundred KB, sent as a latent event.
+    Citizen.CreateThread(function()
+        for i, part in ipairs(parts) do
+            if Admin.playing[src] ~= token then return end
+            local pr = MG.Api.await('GET', ('/admin/replays/%s/parts/%d'):format(payload.id, part.idx))
+            if not pr.ok or Admin.playing[src] ~= token then
+                TriggerClientEvent('milcsoguard:admin:replayPart', src, { id = payload.id, error = pr.err or 'megszakítva' })
+                return
+            end
+            TriggerLatentClientEvent('milcsoguard:admin:replayPart', src, (Config.Replay and Config.Replay.uploadBps or 500000) * 2, {
+                id = payload.id, idx = i - 1, total = #parts, durationMs = pr.data.durationMs, mime = pr.data.mime, data = pr.data.data,
+            })
+        end
+    end)
+    return ok({ replay = r.data.replay, parts = #parts })
+end }
+
+-- ------------------------------------------------------------------ moderation tools
+-- These move players around; the anticheat's own movement checks are told about it first.
+local SPECTATE_EXEMPT = { 'movement.*', 'player.*', 'client.spectate' }
+Admin.spectating = {}
+
+local function pedCoords(src)
+    local c = GetEntityCoords(GetPlayerPed(src))
+    return { x = c.x, y = c.y, z = c.z }
+end
+
+local function moderationTarget(src, admin, payload, allowProtected)
+    local target = MG.State.get(payload.id)
+    if not target then return nil, 'A játékos nincs online.' end
+    if target.src == tonumber(src) then return nil, 'Ezt magadon nem használhatod.' end
+    if not allowProtected and protectedTarget(admin, target) then return nil, 'Azonos vagy magasabb szintű adminon nem használhatod.' end
+    return target
+end
+
+actions['player.freeze'] = { 'players.moderate', function(src, admin, payload)
+    local target, err = moderationTarget(src, admin, payload)
+    if not target then return fail(err) end
+    local freeze = payload.freeze ~= false
+    FreezeEntityPosition(GetPlayerPed(target.src), freeze)
+    target.frozen = freeze or nil
+    TriggerClientEvent('milcsoguard:notice', target.src, freeze and 'Egy admin lefagyasztott.' or 'Már mozoghatsz.')
+    Admin.audit(src, freeze and 'player.freeze' or 'player.unfreeze', { target = target.name, netId = target.src })
+    return ok({ frozen = freeze })
+end }
+
+actions['player.goto'] = { 'players.moderate', function(src, admin, payload)
+    local target, err = moderationTarget(src, admin, payload, true)
+    if not target then return fail(err) end
+    local me = MG.State.get(src)
+    local c = pedCoords(target.src)
+    if me then
+        MG.State.setExempt(me, 'movement.*', 8000)
+        me.sample = nil
+    end
+    SetPlayerRoutingBucket(src, GetPlayerRoutingBucket(target.src))
+    SetEntityCoords(GetPlayerPed(src), c.x + 1.0, c.y, c.z, false, false, false, false)
+    Admin.audit(src, 'player.goto', { target = target.name, netId = target.src })
+    return ok({ coords = c })
+end }
+
+actions['player.bring'] = { 'players.moderate', function(src, admin, payload)
+    local target, err = moderationTarget(src, admin, payload)
+    if not target then return fail(err) end
+    -- Moving someone across routing buckets would break instanced scripts (housing, jobs).
+    if GetPlayerRoutingBucket(target.src) ~= GetPlayerRoutingBucket(src) then return fail('A játékos másik routing bucketben van – használd az Odamegyek gombot.') end
+    local c = pedCoords(src)
+    MG.State.setExempt(target, 'movement.*', 8000)
+    target.sample = nil
+    SetEntityCoords(GetPlayerPed(target.src), c.x + 1.0, c.y, c.z, false, false, false, false)
+    TriggerClientEvent('milcsoguard:notice', target.src, 'Egy admin magához teleportált.')
+    Admin.audit(src, 'player.bring', { target = target.name, netId = target.src })
+    return ok({ coords = c })
+end }
+
+actions['player.message'] = { 'players.moderate', function(src, admin, payload)
+    local target, err = moderationTarget(src, admin, payload, true)
+    if not target then return fail(err) end
+    local msg = U.sanitize(U.trim(payload.message), 200)
+    if #msg < 2 then return fail('Üres üzenet.') end
+    TriggerClientEvent('milcsoguard:notice', target.src, ('~y~[Admin]~s~ %s'):format(msg))
+    Admin.audit(src, 'player.message', { target = target.name, netId = target.src, message = msg })
+    return ok({ sent = true })
+end }
+
+function Admin.stopSpectate(src)
+    local s = Admin.spectating[src]
+    if not s then return false end
+    Admin.spectating[src] = nil
+    local me = MG.State.get(src)
+    if me then
+        local untilMs = MG.State.now() + 5000
+        for _, k in ipairs(SPECTATE_EXEMPT) do me.exempt[k] = untilMs end
+        me.sample = nil
+    end
+    if GetPlayerName(src) then
+        SetPlayerRoutingBucket(src, s.bucket)
+        TriggerClientEvent('milcsoguard:admin:spectate', src, { stop = true, x = s.coords.x, y = s.coords.y, z = s.coords.z })
+    end
+    return true
+end
+
+actions['player.spectate'] = { 'players.moderate', function(src, admin, payload)
+    local target, err = moderationTarget(src, admin, payload, true)
+    if not target then return fail(err) end
+    local me = MG.State.get(src)
+    if not me then return fail('Belső hiba.') end
+    if not Admin.spectating[src] then
+        Admin.spectating[src] = { coords = pedCoords(src), bucket = GetPlayerRoutingBucket(src) }
+    end
+    Admin.spectating[src].target = target.src
+    for _, k in ipairs(SPECTATE_EXEMPT) do MG.State.setExempt(me, k, 3600000) end
+    me.sample = nil
+    SetPlayerRoutingBucket(src, GetPlayerRoutingBucket(target.src))
+    local c = pedCoords(target.src)
+    TriggerClientEvent('milcsoguard:admin:spectate', src, { target = target.src, name = target.name, x = c.x, y = c.y, z = c.z })
+    Admin.audit(src, 'player.spectate', { target = target.name, netId = target.src })
+    return ok({ spectating = target.src, name = target.name })
+end }
+
+actions['player.spectate.stop'] = { 'players.moderate', function(src)
+    return ok({ stopped = Admin.stopSpectate(src) })
+end }
+
+-- Keeps spectating admins next to their target (the target may drive away or teleport).
+Citizen.CreateThread(function()
+    while true do
+        Wait(2000)
+        for src, s in pairs(Admin.spectating) do
+            if not MG.State.get(s.target) then
+                TriggerClientEvent('milcsoguard:notice', src, 'A megfigyelt játékos kilépett.')
+                Admin.stopSpectate(src)
+            else
+                if GetPlayerRoutingBucket(src) ~= GetPlayerRoutingBucket(s.target) then SetPlayerRoutingBucket(src, GetPlayerRoutingBucket(s.target)) end
+                local c = pedCoords(s.target)
+                TriggerClientEvent('milcsoguard:admin:spectate', src, { update = true, target = s.target, x = c.x, y = c.y, z = c.z })
+            end
+        end
+    end
+end)
+
+function Admin.onDropped(src)
+    Admin.open[src] = nil
+    Admin.playing[src] = nil
+    Admin.spectating[src] = nil
+    for admin, s in pairs(Admin.spectating) do
+        if s.target == tonumber(src) then
+            TriggerClientEvent('milcsoguard:notice', admin, 'A megfigyelt játékos kilépett.')
+            Admin.stopSpectate(admin)
+        end
+    end
+end
+
 -- ------------------------------------------------------------------ transport
 function Admin.openFor(src)
     local admin = Perm.refresh(src)
@@ -303,6 +523,7 @@ function Admin.openFor(src)
         brand = Config.Brand, version = MG.VERSION, role = admin.label, level = admin.level,
         permissions = Perm.list(admin), apiEnabled = MG.Api.enabled(), apiOnline = MG.Api.online,
         notifyMin = Config.Detections.notifyAdminsMinSeverity,
+        replayEnabled = MG.Replay.enabled(), spectating = Admin.spectating[src] and Admin.spectating[src].target or nil,
     })
 end
 

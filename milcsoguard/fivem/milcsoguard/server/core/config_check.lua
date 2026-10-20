@@ -79,6 +79,29 @@ function Check.run(cfg)
         err('Config.Detections.notifyAdminsMinSeverity', 'invalid severity -> using MEDIUM')
         cfg.Detections.notifyAdminsMinSeverity = 'MEDIUM'
     end
+
+    local rp = cfg.Replay
+    if type(rp) == 'table' and rp.enabled then
+        local limits = {
+            seconds = { 5, 60 }, segmentSeconds = { 2, 15 }, width = { 320, 1920 }, height = { 180, 1080 }, fps = { 5, 30 },
+            bitrateKbps = { 150, 4000 }, uploadTimeoutSeconds = { 5, 120 }, uploadBps = { 50000, 5000000 },
+            maxBytes = { 1024 * 1024, 24 * 1024 * 1024 }, maxConcurrent = { 1, 16 },
+        }
+        for k, lim in pairs(limits) do
+            local v = tonumber(rp[k])
+            if not v then
+                err('Config.Replay.' .. k, 'must be a number -> replays disabled')
+                rp.enabled = false
+            elseif v < lim[1] or v > lim[2] then
+                warn('Config.Replay.' .. k, ('outside %d..%d; clamped'):format(lim[1], lim[2]))
+                rp[k] = math.max(lim[1], math.min(lim[2], v))
+            end
+        end
+        if rp.enabled and math.ceil(rp.seconds / rp.segmentSeconds) + 1 > 16 then
+            warn('Config.Replay.segmentSeconds', 'too many segments for the replay length; raising segmentSeconds')
+            rp.segmentSeconds = math.ceil(rp.seconds / 15)
+        end
+    end
     return errors, warnings
 end
 

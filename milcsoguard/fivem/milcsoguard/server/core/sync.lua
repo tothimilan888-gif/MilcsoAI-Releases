@@ -165,6 +165,17 @@ local function handleCommand(cmd)
         if not match then return 'failed', 'net id now belongs to another player' end
         DropPlayer(tostring(p.src), ('Kickelve: %s (%s)'):format(U.sanitize(pl.reason or '-', 200), U.sanitize(pl.by or 'admin', 32)))
         return 'done', 'dropped'
+    elseif t == 'replay_request' then
+        local p = MG.State.get(pl.netId)
+        local fail = function(why) MG.Replay.failRemote(pl.replayId, why) return 'failed', why end
+        if not p then return fail('player not online') end
+        local mine = U.toSet(p.identifiers)
+        local match = false
+        for _, i in ipairs(pl.identifiers or {}) do if mine[i] then match = true break end end
+        if not match then return fail('net id now belongs to another player') end
+        local id, err = MG.Replay.capture(p.src, { id = pl.replayId, kind = 'manual', reason = pl.reason })
+        if not id then return fail(err) end
+        return 'done', 'capture started'
     elseif t == 'ban_sync' then
         MG.Bans.sync(false)
         return 'done', 'sync started'

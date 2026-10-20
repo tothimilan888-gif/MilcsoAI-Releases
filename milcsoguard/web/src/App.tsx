@@ -10,6 +10,7 @@ import { DashboardPage } from './pages/Dashboard';
 import { DetectionsPage } from './pages/Detections';
 import { PlayersPage, PlayerProfilePage } from './pages/Players';
 import { BansPage } from './pages/Bans';
+import { ReplaysPage } from './pages/Replays';
 import { WhitelistPage } from './pages/Whitelist';
 import { AdminsPage } from './pages/Admins';
 import { AuditPage } from './pages/Audit';
@@ -61,6 +62,7 @@ export function App() {
         <Route path="players" element={<Perm perm="players.view"><PlayersPage /></Perm>} />
         <Route path="players/:playerId" element={<Perm perm="players.view"><PlayerProfilePage /></Perm>} />
         <Route path="bans" element={<Perm perm="bans.view"><BansPage /></Perm>} />
+        <Route path="replays" element={<Perm perm="replays.view"><ReplaysPage /></Perm>} />
         <Route path="whitelist" element={<Perm perm="whitelist.view"><WhitelistPage /></Perm>} />
         <Route path="admins" element={<Perm perm="admins.view"><AdminsPage /></Perm>} />
         <Route path="audit" element={<Perm perm="audit.view"><AuditPage /></Perm>} />

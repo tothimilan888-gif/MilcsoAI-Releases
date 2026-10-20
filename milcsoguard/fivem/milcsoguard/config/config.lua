@@ -60,9 +60,9 @@ Config.Roles = {
     owner = { level = 100, label = 'Owner', permissions = { '*' } },
     developer = { level = 90, label = 'Developer', permissions = { '*', '-servers.manage' } },
     server_manager = { level = 80, label = 'Server Manager', permissions = { '*', '-servers.manage', '-apikeys.manage', '-roles.manage' } },
-    admin_controller = { level = 70, label = 'AdminController', permissions = { 'players.view', 'players.identifiers', 'players.kick', 'detections.view', 'detections.review', 'bans.view', 'bans.create', 'bans.permanent', 'bans.remove', 'whitelist.view', 'whitelist.manage', 'admins.view', 'admins.manage', 'settings.view', 'audit.view', 'analytics.view', 'system.view' } },
-    administrator = { level = 60, label = 'Administrator', permissions = { 'players.view', 'players.identifiers', 'players.kick', 'detections.view', 'detections.review', 'bans.view', 'bans.create', 'bans.permanent', 'bans.remove', 'whitelist.view', 'whitelist.manage', 'settings.view', 'analytics.view', 'system.view' } },
-    moderator = { level = 40, label = 'Moderator', permissions = { 'players.view', 'players.kick', 'detections.view', 'detections.review', 'bans.view', 'bans.create', 'whitelist.view', 'analytics.view' } },
+    admin_controller = { level = 70, label = 'AdminController', permissions = { 'players.view', 'players.identifiers', 'players.kick', 'players.moderate', 'replays.view', 'replays.request', 'detections.view', 'detections.review', 'bans.view', 'bans.create', 'bans.permanent', 'bans.remove', 'whitelist.view', 'whitelist.manage', 'admins.view', 'admins.manage', 'settings.view', 'audit.view', 'analytics.view', 'system.view' } },
+    administrator = { level = 60, label = 'Administrator', permissions = { 'players.view', 'players.identifiers', 'players.kick', 'players.moderate', 'replays.view', 'replays.request', 'detections.view', 'detections.review', 'bans.view', 'bans.create', 'bans.permanent', 'bans.remove', 'whitelist.view', 'whitelist.manage', 'settings.view', 'analytics.view', 'system.view' } },
+    moderator = { level = 40, label = 'Moderator', permissions = { 'players.view', 'players.kick', 'players.moderate', 'replays.view', 'replays.request', 'detections.view', 'detections.review', 'bans.view', 'bans.create', 'whitelist.view', 'analytics.view' } },
     viewer = { level = 10, label = 'Viewer', permissions = { 'players.view', 'detections.view', 'bans.view', 'whitelist.view', 'analytics.view', 'system.view' } },
 }
 
@@ -77,6 +77,24 @@ Config.Bans = {
     appealText = 'Fellebbezés: discord.gg/yourserver',
     -- Collect hardware tokens (GetPlayerToken) as ban identifiers.
     useTokens = true,
+}
+
+-- POV replay: every client keeps the last seconds of its own game view in memory (NUI, WebM).
+-- It is uploaded only when the player is banned (onBan) or an admin with replays.request asks for
+-- it; otherwise it never leaves the PC. Tell your players about it in the server rules.
+-- Cost on the client: one small WebGL draw per recorded frame plus VP8 encoding (~480p/15 fps).
+Config.Replay = {
+    enabled = true,
+    seconds = 15,            -- at least this much video before the moment of capture
+    segmentSeconds = 5,      -- recorder restarts this often (each part is a standalone WebM)
+    width = 854, height = 480, fps = 15,
+    bitrateKbps = 700,       -- ~1.3 MB per 15 s
+    onBan = true,            -- capture before a banned player is dropped
+    isolateOnBan = true,     -- private routing bucket + freeze while the replay uploads
+    uploadTimeoutSeconds = 25, -- the banned player is dropped after this at the latest
+    uploadBps = 500000,      -- latent event bandwidth client -> server (bytes/s)
+    maxBytes = 12 * 1024 * 1024,
+    maxConcurrent = 4,
 }
 
 Config.Risk = {

@@ -12,6 +12,7 @@ const INVALIDATE: Record<string, string[]> = {
   'server.status': ['system', 'stats', 'online'],
   'config.changed': ['config'],
   'whitelist.changed': ['whitelist'],
+  'replay.updated': ['replays', 'player', 'bans'],
 };
 
 /**

@@ -10,7 +10,7 @@ import { ErrorState, FieldError, Loading, Modal } from '../components/ui';
 
 const TYPES = ['license', 'license2', 'discord', 'fivem', 'steam', 'xbl', 'live', 'token', 'ip'];
 const TYPE_HINT: Record<string, string> = { token: 'hardver token – erős, de közös gépnél (internetkávézó, testvérek) ártatlant is kitilthat', ip: 'IP – NAT/mobilnet miatt sok téves egyezést okoz, nem ajánlott' };
-interface ServerRow { name: string; slug: string; description: string; ban_match_types: string[]; retention: { detectionsDays: number; auditDays: number; systemEventsDays: number; sessionsDays: number } }
+interface ServerRow { name: string; slug: string; description: string; ban_match_types: string[]; retention: { detectionsDays: number; auditDays: number; systemEventsDays: number; sessionsDays: number; replaysDays?: number } }
 
 export function ServerSettingsPage() {
   const server = useServer();
@@ -52,7 +52,7 @@ export function ServerSettingsPage() {
         <section className="card">
           <h2>Adatmegőrzés</h2>
           <p className="muted small">A karbantartó job óránként töröl. Banhoz csatolt detektálás és maguk a banok soha nem törlődnek automatikusan.</p>
-          {ret('detectionsDays', 'Detektálások', 7)}{ret('auditDays', 'Auditnapló', 30)}{ret('systemEventsDays', 'Rendszeresemények', 7)}{ret('sessionsDays', 'Játékos munkamenetek', 7)}
+          {ret('detectionsDays', 'Detektálások', 7)}{ret('auditDays', 'Auditnapló', 30)}{ret('systemEventsDays', 'Rendszeresemények', 7)}{ret('sessionsDays', 'Játékos munkamenetek', 7)}{ret('replaysDays', 'POV visszajátszások (aktív banhoz tartozó nem törlődik)', 1)}
           <h2 className="danger-text">Veszélyzóna</h2>
           <button className="btn danger" onClick={() => setDel(true)}>Szerver törlése…</button>
         </section>

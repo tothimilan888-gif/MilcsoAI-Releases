@@ -6,7 +6,8 @@ local Perm = {}
 MG.Permissions = Perm
 
 Perm.ALL = {
-    'players.view', 'players.identifiers', 'players.kick', 'detections.view', 'detections.review',
+    'players.view', 'players.identifiers', 'players.kick', 'players.moderate', 'replays.view', 'replays.request',
+    'detections.view', 'detections.review',
     'bans.view', 'bans.create', 'bans.permanent', 'bans.remove', 'whitelist.view', 'whitelist.manage',
     'admins.view', 'admins.manage', 'roles.manage', 'settings.view', 'settings.manage', 'audit.view',
     'analytics.view', 'system.view', 'apikeys.manage', 'integrations.manage', 'servers.manage',

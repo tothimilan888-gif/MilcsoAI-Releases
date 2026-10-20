@@ -62,6 +62,7 @@ RegisterNetEvent('milcsoguard:ready', function()
         command = Config.Permissions.command,
         keybind = Config.Permissions.keybind,
         brand = Config.Brand,
+        replay = MG.Replay and MG.Replay.clientConfig() or nil,
     })
 end)
 

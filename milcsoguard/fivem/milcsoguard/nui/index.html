@@ -22,6 +22,7 @@
       <header class="topbar">
         <h1 id="pageTitle">Dashboard</h1>
         <div class="topbar-right">
+          <span id="specBar" class="chip spec hidden">Spectate: <b id="specName"></b> <button class="btn sm danger" id="specStop">Leállítás</button></span>
           <span id="apiStatus" class="status"><i></i><span></span></span>
           <button class="icon-btn" id="closeBtn" title="Bezárás (Esc)" aria-label="Bezárás">✕</button>
         </div>
@@ -33,5 +34,6 @@
   <div id="modal" class="modal hidden" role="dialog" aria-modal="true"></div>
   <script src="brand.js"></script>
   <script src="app.js"></script>
+  <script src="replay.js"></script>
 </body>
 </html>

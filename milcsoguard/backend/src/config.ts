@@ -45,6 +45,8 @@ const EnvSchema = z.object({
   LOGIN_LOCK_MINUTES: z.coerce.number().int().min(1).max(24 * 60).default(15),
   RETENTION_JOB_MINUTES: z.coerce.number().int().min(1).default(60),
   GAME_HEARTBEAT_STALE_SECONDS: z.coerce.number().int().min(30).default(120),
+  // Per-server storage for POV replays (PostgreSQL). Oldest replays not tied to an active ban are evicted first.
+  REPLAY_STORAGE_LIMIT_MB: z.coerce.number().int().min(16).max(100_000).default(1024),
   // Allow the game resource to report from plain HTTP (only for local development).
   ALLOW_INSECURE_GAME_HTTP: bool.default(false),
 });

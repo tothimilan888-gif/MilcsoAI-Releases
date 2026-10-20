@@ -7,6 +7,9 @@ A táblázat a kódból generált (`backend/src/lib/permissions.ts` → `SYSTEM_
 | `players.view` | Játékosok listázása és profiljuk megtekintése | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `players.identifiers` | Teljes azonosítók (license, discord, steam…) megtekintése | ✅ | ✅ | ✅ | ✅ | ✅ | – | – |
 | `players.kick` | Játékos kickelése | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | – |
+| `players.moderate` | Játékon belüli admin eszközök: fagyasztás, teleport, spectate, üzenet | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | – |
+| `replays.view` | POV visszajátszások megtekintése | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | – |
+| `replays.request` | POV visszajátszás kérése egy online játékostól (utolsó másodpercek) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | – |
 | `detections.view` | Detektálások megtekintése | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `detections.review` | Detektálások felülvizsgálata, téves riasztás jelölése | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | – |
 | `bans.view` | Banok megtekintése | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
@@ -37,6 +40,7 @@ A táblázat a kódból generált (`backend/src/lib/permissions.ts` → `SYSTEM_
 6. Minden szerepkör- és tagváltozás auditnaplóba kerül (`member.add`, `member.role_change`, `member.remove`, `role.create/update/delete`).
 7. Platform admin (telepítés tulajdonosa, `create-owner` script) minden szerveren Owner-ként viselkedik, és csak ő hozhat létre szervert.
 8. Végleges banhoz `bans.permanent`, időszakoshoz `bans.create` kell. Az időtartam nélküli ban **soha nem** értelmeződik véglegesnek – a véglegest explicit kérni kell.
+9. A játékon belüli eszközök (`players.moderate`) és a visszajátszás-kérés nem használható azonos vagy magasabb szintű adminon (kivétel: Owner, illetve az Odamegyek / Spectate / Üzenet, amik nem hatnak a célpontra). Minden használat auditált (`ingame.player.freeze`, `…goto`, `…bring`, `…spectate`, `…message`, `replay.request`, `replay.view`).
 
 ## Játékon belüli jogosultság
 

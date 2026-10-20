@@ -9,6 +9,7 @@ import { BAN_COLUMNS } from '../services/bans.js';
 import { enqueueCommand } from '../services/commands.js';
 import { DETECTION_COLUMNS, escapeLike, type DetectionRow } from '../services/detections.js';
 import { presentDetection } from './detections.js';
+import { REPLAY_COLUMNS } from '../services/replays.js';
 
 export default async function playerRoutes(app: FastifyInstance) {
   app.get('/servers/:serverId/players/online', { preHandler: app.requireServer('players.view') }, async (req) => {
@@ -92,7 +93,10 @@ export default async function playerRoutes(app: FastifyInstance) {
       )
     ).rows[0];
     const online = sessions.find((s) => !s.disconnected_at) ?? null;
-    return { player, identifiers, sessions, detections, bans, stats, online };
+    const replays = req.access!.permissions.has('replays.view')
+      ? (await app.db.query(`SELECT ${REPLAY_COLUMNS} FROM replays r WHERE r.player_id = $1 ORDER BY r.created_at DESC LIMIT 25`, [playerId])).rows
+      : [];
+    return { player, identifiers, sessions, detections, bans, stats, online, replays };
   });
 
   app.patch('/servers/:serverId/players/:playerId', { preHandler: app.requireServer(['players.view', 'detections.review']) }, async (req) => {

@@ -1,6 +1,6 @@
 import type { Queryable } from '../db/pool.js';
 
-export type CommandType = 'kick' | 'ban_sync' | 'config_sync' | 'announce_admins';
+export type CommandType = 'kick' | 'ban_sync' | 'config_sync' | 'announce_admins' | 'replay_request';
 
 /** Queues a command for the game server. Commands not picked up within ttlSeconds expire. */
 export async function enqueueCommand(

@@ -140,6 +140,9 @@ function U.uuid()
         out[i] = hex:sub(r, r)
     end
     out[13] = '4'
+    -- RFC 4122 variant bits (8, 9, a or b); strict UUID validators reject anything else.
+    local v = math.random(1, 4)
+    out[17] = ('89ab'):sub(v, v)
     local s = table.concat(out)
     return s:sub(1, 8) .. '-' .. s:sub(9, 12) .. '-' .. s:sub(13, 16) .. '-' .. s:sub(17, 20) .. '-' .. s:sub(21, 32)
 end

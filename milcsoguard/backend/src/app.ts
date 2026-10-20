@@ -28,6 +28,7 @@ import configRoutes from './routes/config.js';
 import apiKeyRoutes from './routes/apikeys.js';
 import integrationRoutes from './routes/integrations.js';
 import streamRoutes from './routes/stream.js';
+import replayRoutes from './routes/replays.js';
 import gameRoutes from './routes/game.js';
 import healthRoutes from './routes/health.js';
 
@@ -71,6 +72,8 @@ export async function buildApp(opts: BuildOptions): Promise<FastifyInstance> {
         scriptSrc: ["'self'"],
         styleSrc: ["'self'", "'unsafe-inline'"],
         imgSrc: ["'self'", 'data:'],
+        // replays are fetched with the session cookie and played from blob: URLs
+        mediaSrc: ["'self'", 'blob:'],
         connectSrc: ["'self'"],
         frameAncestors: ["'none'"],
         objectSrc: ["'none'"],
@@ -143,6 +146,7 @@ export async function buildApp(opts: BuildOptions): Promise<FastifyInstance> {
       await api.register(apiKeyRoutes);
       await api.register(integrationRoutes);
       await api.register(streamRoutes);
+      await api.register(replayRoutes);
       await api.register(gameRoutes, { prefix: '/game' });
     },
     { prefix: '/api/v1' },

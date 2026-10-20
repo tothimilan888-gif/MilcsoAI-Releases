@@ -18,6 +18,12 @@ A FiveM resource és a backend **együtt** adandó ki (azonos verziószám, `fxm
 4. FiveM resource: cseréld le a `milcsoguard` mappát, **a saját `config/config.lua`-dat tartsd meg** (vesd össze az újjal – új kulcsok lehetnek), majd `restart milcsoguard`. A helyi ban-gyorsítótár és a kimenő sor KVP-ben van, a restart túléli.
 5. Ellenőrzés: *Rendszerállapot* → resource verzió, séma, heartbeat; `milcsoguard status`.
 
+## 1.0 → 1.1 (POV visszajátszás, admin eszközök)
+
+* Backend: a `002_replays` migráció induláskor automatikusan lefut (két új tábla, a `replay_request` parancstípus, `replaysDays` megőrzés = 30 nap). A meglévő adat nem változik. Új, opcionális env: `REPLAY_STORAGE_LIMIT_MB` (alap 1024).
+* Resource: új fájlok a `client/replay.lua`, a `server/core/replay.lua` és a `nui/replay.js`. A `fxmanifest.lua` és a `config/config.lua` is változott (új `Config.Replay` blokk, a Moderator/Administrator/AdminController szerepkörök új jogokat kaptak: `players.moderate`, `replays.view`, `replays.request`). A saját `config.lua`-dba másold át a `Config.Replay` blokkot és a szerepkörök új jogait, különben a funkció ki van kapcsolva / nem elérhető.
+* Sorrend: előbb a backend, utána a resource.
+
 ## Rollback
 
 * **Konfiguráció:** *Anticheat beállítások → Verziótörténet → Visszaállítás* (új verzióként menti, auditálva).

@@ -119,13 +119,45 @@ function Bans.message(ban)
     return msg
 end
 
+--[[
+  Removes a banned player from the server. When the player's replay recorder runs, the last
+  seconds of their view are collected first (Config.Replay.onBan): the player is moved to a
+  private routing bucket and frozen, and dropped as soon as the upload ended – at the latest
+  after Config.Replay.uploadTimeoutSeconds. The ban itself is already in force (cached), so a
+  reconnect during that time is refused.
+]]
+function Bans.enforce(src, ban)
+    local p = MG.State.get(src)
+    if not p or p.banning then return false end
+    p.banning = true
+    local msg = Bans.message(ban)
+    local R = MG.Replay
+    if R and R.enabled() and Config.Replay.onBan and p.replayState == 'recording' then
+        local id = R.capture(p.src, {
+            kind = 'ban', reason = ban.reason, banLocalId = ban.localId,
+            banId = not U.startsWith(ban.id, 'local:') and ban.id or nil,
+            onCaptured = function() DropPlayer(tostring(p.src), msg) end,
+        })
+        if id then
+            ban.replayId = id
+            if Config.Replay.isolateOnBan then
+                -- a moment later, so the client stops its recorder before the world disappears
+                SetTimeout(1000, function() if MG.State.get(p.src) then R.isolate(p) end end)
+            end
+            return true
+        end
+    end
+    SetTimeout(250, function() DropPlayer(tostring(p.src), msg) end)
+    return true
+end
+
 --- Drops every online player matching an active ban.
 function Bans.enforceOnline()
     for _, p in ipairs(MG.State.list()) do
         local ban = Bans.find(p.identifiers)
-        if ban then
+        if ban and not p.banning then
             Log.info('dropping banned player %s (#%d) – ban %s', p.name, p.src, ban.code or ban.id)
-            DropPlayer(tostring(p.src), Bans.message(ban))
+            Bans.enforce(p.src, ban)
         end
     end
 end

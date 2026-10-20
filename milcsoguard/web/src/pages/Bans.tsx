@@ -4,7 +4,8 @@ import { Link } from 'react-router-dom';
 import { api, qs } from '../lib/api';
 import { useCan, useServer } from '../lib/server';
 import { BAN_DURATIONS, BAN_STATUS, fmtDate, fmtRelative } from '../lib/format';
-import type { Ban, Page } from '../lib/types';
+import type { Ban, Page, Replay } from '../lib/types';
+import { ReplayPlayer } from './Replays';
 import { useToast } from '../lib/toast';
 import { PageHeader } from '../components/Layout';
 import { Badge, ConfirmReason, Empty, ErrorState, FieldError, Loading, Modal, Pagination, Tabs } from '../components/ui';
@@ -67,7 +68,7 @@ export function BanDetail({ banId, onClose }: { banId: string; onClose: () => vo
   const toast = useToast();
   const qc = useQueryClient();
   const [action, setAction] = useState<null | 'revoke' | 'under_review' | 'upheld' | 'overturned'>(null);
-  const q = useQuery({ queryKey: ['bans', server.id, 'detail', banId], queryFn: () => api<{ ban: Ban; detections: { id: string; type: string; severity: string; occurred_at: string }[]; history: { action: string; actor_label: string; details: Record<string, unknown>; created_at: string }[] }>('GET', `/servers/${server.id}/bans/${banId}`) });
+  const q = useQuery({ queryKey: ['bans', server.id, 'detail', banId], queryFn: () => api<{ ban: Ban; detections: { id: string; type: string; severity: string; occurred_at: string }[]; history: { action: string; actor_label: string; details: Record<string, unknown>; created_at: string }[]; replays: Replay[] }>('GET', `/servers/${server.id}/bans/${banId}`) });
   const done = (msg: string) => { toast(msg, 'success'); void qc.invalidateQueries({ queryKey: ['bans', server.id] }); };
   const b = q.data?.ban;
   return (
@@ -89,6 +90,12 @@ export function BanDetail({ banId, onClose }: { banId: string; onClose: () => vo
             {b.review_note && <><dt>Felülvizsgálat</dt><dd>{b.review_note}</dd></>}
             <dt>Azonosítók</dt><dd className="mono small">{b.identifiers.map((i) => <div key={i}>{i}</div>)}</dd>
           </dl>
+          {can('replays.view') && (
+            <>
+              <h3>POV visszajátszás</h3>
+              {q.data!.replays.length ? q.data!.replays.map((r) => <ReplayPlayer key={r.id} replay={r} />) : <p className="muted">Ehhez a banhoz nem érkezett felvétel (a játékos nem volt online, a felvevője nem futott, vagy a kliens nem küldte el).</p>}
+            </>
+          )}
           <h3>Kapcsolódó detektálások</h3>
           {q.data!.detections.length ? <ul className="plain">{q.data!.detections.map((d) => <li key={d.id}><span className={`badge sev-${d.severity}`}>{d.severity}</span> {d.type} <span className="muted">{fmtDate(d.occurred_at)}</span></li>)}</ul> : <p className="muted">Nincs csatolt detektálás.</p>}
           <h3>Előzmények</h3>

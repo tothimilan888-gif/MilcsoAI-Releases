@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { expireBans } from '../services/bans.js';
+import { pruneReplays } from '../services/replays.js';
 
 /**
  * Periodic housekeeping: expires temporary bans, closes sessions of servers that stopped sending
@@ -34,6 +35,9 @@ export async function runMaintenance(app: FastifyInstance): Promise<Record<strin
     AND e.created_at < now() - make_interval(days => (s.retention->>'systemEventsDays')::int)`);
   out.playerSessions = await del(`DELETE FROM player_sessions p USING servers s WHERE s.id = p.server_id
     AND p.disconnected_at IS NOT NULL AND p.disconnected_at < now() - make_interval(days => (s.retention->>'sessionsDays')::int)`);
+  const replays = await pruneReplays(db);
+  out.replays = replays.deleted;
+  out.replaysFailed = replays.failed;
   out.webSessions = await del("DELETE FROM sessions WHERE expires_at < now() - interval '7 days' OR revoked_at < now() - interval '7 days'");
   out.commands = await del("DELETE FROM server_commands WHERE created_at < now() - interval '7 days'");
   return out;

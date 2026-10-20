@@ -5,7 +5,7 @@ lua54 'yes'
 name 'milcsoguard'
 author 'MilcsoGuard'
 description 'MilcsoGuard – server-authoritative anticheat with in-game admin panel'
-version '1.0.0'
+version '1.1.0'
 repository 'https://github.com/tothimilan888-gif/MilcsoAI-Releases'
 
 -- Nothing in server_scripts (config, API key handling) is ever sent to clients.
@@ -29,6 +29,7 @@ server_scripts {
     'server/core/bans.lua',
     'server/core/detections.lua',
     'server/core/sync.lua',
+    'server/core/replay.lua',
     'server/modules/movement.lua',
     'server/modules/player.lua',
     'server/modules/weapons.lua',
@@ -42,6 +43,7 @@ server_scripts {
 client_scripts {
     'client/main.lua',
     'client/admin.lua',
+    'client/replay.lua',
 }
 
 ui_page 'nui/index.html'
@@ -51,6 +53,7 @@ files {
     'nui/style.css',
     'nui/app.js',
     'nui/brand.js',
+    'nui/replay.js',
 }
 
 -- OneSync is required for the server-side checks; the resource reports clearly when it is off.

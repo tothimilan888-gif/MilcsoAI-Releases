@@ -1,6 +1,7 @@
 MG = MG or {}
 local U = MG.Util
-local State = { players = {}, pending = {} }
+local State = { players = {}, pending = {}, recent = {} }
+local RECENT_MAX = 50
 MG.State = State
 
 function State.now() return GetGameTimer() end
@@ -53,6 +54,16 @@ end
 
 function State.remove(src)
     State.players[tonumber(src)] = nil
+end
+
+--- Remembers a player who left, so admins can still ban them from the in-game panel.
+function State.rememberDropped(p, reason)
+    if not p then return end
+    table.insert(State.recent, 1, {
+        key = MG.Util.uuid(), name = p.name, src = p.src, identifiers = p.identifiers, reason = MG.Util.sanitize(reason or '', 120),
+        droppedAt = os.time(), risk = MG.Detections and MG.Detections.score(p) or 0, adminLevel = p.admin and p.admin.level or 0,
+    })
+    while #State.recent > RECENT_MAX do table.remove(State.recent) end
 end
 
 --- True if the module should not be applied to this player right now.

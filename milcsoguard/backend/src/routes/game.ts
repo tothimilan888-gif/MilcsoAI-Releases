@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { withTx, type Queryable } from '../db/pool.js';
 import { audit, type Actor } from '../lib/audit.js';
 import { configSchemaDescriptor } from '../lib/configSchema.js';
-import { forbidden, notFound, unprocessable } from '../lib/errors.js';
+import { conflict, forbidden, notFound, unprocessable } from '../lib/errors.js';
 import { formatIdentifier, normaliseIdentifiers, type Identifier } from '../lib/identifiers.js';
 import { isPermission, type Permission } from '../lib/permissions.js';
 import { publish } from '../lib/realtime.js';
@@ -13,6 +13,10 @@ import { takePendingCommands } from '../services/commands.js';
 import { DETECTION_COLUMNS, detectionInput, detectionListQuery, ingestDetections, listDetections, reviewDetection, type DetectionRow } from '../services/detections.js';
 import { resolvePlayer } from '../services/players.js';
 import { activeWhitelist, playerWhitelist } from '../services/whitelist.js';
+import {
+  REPLAY_COLUMNS, REPLAY_MAX_PART_BYTES, REPLAY_MAX_PARTS, REPLAY_MAX_TOTAL_BYTES,
+  assertUploadable, ensureStorage, getReplay, linkReplaysToBan, replayParts, type ReplayRow,
+} from '../services/replays.js';
 import { MAX_TEMP_BAN_SECONDS } from './bans.js';
 import { auditQuery, listAudit } from './audit.js';
 import { dashboardStats } from './analytics.js';
@@ -340,6 +344,7 @@ export default async function gameRoutes(app: FastifyInstance) {
       detectionIds,
       localId: body.localId,
     });
+    await linkReplaysToBan(app.db, sid, body.localId, ban.id);
     return { ban: presentBanForGame(ban, ban.identifiers ?? []), created: ban.created };
   });
 
@@ -391,7 +396,103 @@ export default async function gameRoutes(app: FastifyInstance) {
     return { ok: true };
   });
 
-  // ---------------------------------------------------------------- data for the in-game admin panel
+  // ---------------------------------------------------------------- POV replays
+  // The client records its own game view; the game server collects the segments (it knows which
+  // player sent them) and forwards them here. Nothing on this path is reachable by the client.
+  app.post('/replays', async (req) => {
+    const body = parse(
+      z.object({
+        id: z.uuid(),
+        kind: z.enum(['ban', 'manual']),
+        playerName: z.string().max(64).default(''),
+        identifiers,
+        reason: z.string().max(500).default(''),
+        banId: z.uuid().optional(),
+        banLocalId: z.string().min(8).max(64).regex(/^[A-Za-z0-9_-]+$/).optional(),
+        requestedBy: actorSchema.optional(),
+        width: z.number().int().min(16).max(4096).optional(),
+        height: z.number().int().min(16).max(4096).optional(),
+        fps: z.number().int().min(1).max(60).optional(),
+      }),
+      req.body,
+    );
+    const sid = req.game!.serverId;
+    const actor = await gameActor(app, req, body.requestedBy, body.kind === 'manual' ? 'replays.request' : null);
+    const { playerId } = await resolvePlayer(app.db, sid, normaliseIdentifiers(body.identifiers), body.playerName, { create: false, touch: false });
+    let banId = body.banId ?? null;
+    if (banId && !(await app.db.query('SELECT 1 FROM bans WHERE id = $1 AND server_id = $2', [banId, sid])).rowCount) banId = null;
+    if (!banId && body.banLocalId) {
+      banId = (await app.db.query<{ id: string }>('SELECT id FROM bans WHERE server_id = $1 AND local_id = $2', [sid, body.banLocalId])).rows[0]?.id ?? null;
+    }
+    const existing = (await app.db.query<{ server_id: string; status: string }>('SELECT server_id, status FROM replays WHERE id = $1', [body.id])).rows[0];
+    if (existing) {
+      // A replay the web dashboard requested (or a retry of this call).
+      if (existing.server_id !== sid) throw notFound('Replay not found');
+      if (existing.status !== 'requested' && existing.status !== 'uploading') throw conflict(`Replay is already ${existing.status}`);
+      await app.db.query(
+        `UPDATE replays SET status = 'uploading', player_id = COALESCE(player_id, $2), player_name = CASE WHEN player_name = '' THEN $3 ELSE player_name END,
+                ban_id = COALESCE(ban_id, $4), ban_local_id = COALESCE(ban_local_id, $5), width = $6, height = $7, fps = $8 WHERE id = $1`,
+        [body.id, playerId, body.playerName, banId, body.banLocalId ?? null, body.width ?? null, body.height ?? null, body.fps ?? null],
+      );
+    } else {
+      await app.db.query(
+        `INSERT INTO replays (id, server_id, player_id, player_name, kind, status, reason, ban_id, ban_local_id, requested_by, requested_by_label, width, height, fps)
+         VALUES ($1, $2, $3, $4, $5, 'uploading', $6, $7, $8, $9, $10, $11, $12, $13)`,
+        [body.id, sid, playerId, body.playerName, body.kind, body.reason, banId, body.banLocalId ?? null, actor.userId ?? null,
+          body.kind === 'ban' ? 'anticheat:ban' : actor.label, body.width ?? null, body.height ?? null, body.fps ?? null],
+      );
+      if (body.kind === 'manual') {
+        await audit(app.db, actor, { serverId: sid, action: 'replay.request', targetType: 'replay', targetId: body.id, details: { player: body.playerName, reason: body.reason } });
+      }
+    }
+    return { ok: true, id: body.id };
+  });
+
+  app.put('/replays/:id/parts/:idx', { bodyLimit: Math.ceil(REPLAY_MAX_PART_BYTES * 1.4) + 4096 }, async (req) => {
+    const { id, idx } = parse(z.object({ id: z.uuid(), idx: z.coerce.number().int().min(0).max(REPLAY_MAX_PARTS - 1) }), req.params);
+    const body = parse(
+      z.object({
+        durationMs: z.number().int().min(0).max(120_000),
+        data: z.string().min(8).max(Math.ceil(REPLAY_MAX_PART_BYTES * 1.4)).regex(/^[A-Za-z0-9+/]+={0,2}$/, 'data must be base64'),
+      }),
+      req.body,
+    );
+    const sid = req.game!.serverId;
+    await assertUploadable(app.db, sid, id);
+    const bytes = Buffer.from(body.data, 'base64');
+    if (bytes.length > REPLAY_MAX_PART_BYTES) throw unprocessable('Replay part too large');
+    // Every part is a complete WebM file: it must start with the EBML magic.
+    if (bytes.readUInt32BE(0) !== 0x1a45dfa3) throw unprocessable('Replay part is not a WebM file');
+    const current = Number((await app.db.query<{ n: string }>('SELECT COALESCE(sum(size_bytes), 0) AS n FROM replay_parts WHERE replay_id = $1 AND idx <> $2', [id, idx])).rows[0]!.n);
+    if (current + bytes.length > REPLAY_MAX_TOTAL_BYTES) throw unprocessable('Replay too large');
+    await ensureStorage(app.db, sid, bytes.length, app.cfg.REPLAY_STORAGE_LIMIT_MB * 1024 * 1024, id);
+    await app.db.query(
+      `INSERT INTO replay_parts (replay_id, idx, duration_ms, size_bytes, data) VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (replay_id, idx) DO UPDATE SET duration_ms = EXCLUDED.duration_ms, size_bytes = EXCLUDED.size_bytes, data = EXCLUDED.data`,
+      [id, idx, body.durationMs, bytes.length, bytes],
+    );
+    return { ok: true, bytes: bytes.length };
+  });
+
+  app.post('/replays/:id/complete', async (req) => {
+    const { id } = parse(z.object({ id: z.uuid() }), req.params);
+    const body = parse(z.object({ status: z.enum(['ready', 'failed']), error: z.string().max(300).optional() }), req.body);
+    const sid = req.game!.serverId;
+    await assertUploadable(app.db, sid, id);
+    const parts = await replayParts(app.db, id);
+    const ready = body.status === 'ready' && parts.length > 0;
+    const error = ready ? null : (body.error ?? (parts.length ? 'upload failed' : 'no video received'));
+    await app.db.query(
+      `UPDATE replays SET status = $2, error = $3, completed_at = now(), part_count = $4,
+              duration_ms = $5, size_bytes = $6 WHERE id = $1`,
+      [id, ready ? 'ready' : 'failed', error, parts.length, parts.reduce((s, p) => s + p.duration_ms, 0), parts.reduce((s, p) => s + p.size_bytes, 0)],
+    );
+    if (!ready) await app.db.query('DELETE FROM replay_parts WHERE replay_id = $1', [id]);
+    await publish(app.db, { serverId: sid, type: 'replay.updated', data: { id, status: ready ? 'ready' : 'failed' } });
+    return { ok: true, status: ready ? 'ready' : 'failed' };
+  });
+
+    // ---------------------------------------------------------------- data for the in-game admin panel
   // The game server checks the admin's permission before calling these; actions are audited with the admin as actor.
   app.get('/admin/stats', async (req) => dashboardStats(app, req.game!.serverId));
 
@@ -452,13 +553,17 @@ export default async function gameRoutes(app: FastifyInstance) {
   app.post('/admin/audit', async (req) => {
     const body = parse(
       z.object({
-        action: z.enum(['player.kick', 'player.monitor', 'panel.open']),
+        action: z.enum(['player.kick', 'player.monitor', 'panel.open', 'player.freeze', 'player.unfreeze', 'player.goto', 'player.bring', 'player.spectate', 'player.message']),
         details: z.preprocess(emptyArrayAsObject, z.record(z.string(), z.unknown())).refine((d) => JSON.stringify(d).length < 4000).default({}),
         actor: actorSchema,
       }),
       req.body,
     );
-    const perm: Record<string, Permission | null> = { 'player.kick': 'players.kick', 'player.monitor': 'detections.review', 'panel.open': null };
+    const perm: Record<string, Permission | null> = {
+      'player.kick': 'players.kick', 'player.monitor': 'detections.review', 'panel.open': null,
+      'player.freeze': 'players.moderate', 'player.unfreeze': 'players.moderate', 'player.goto': 'players.moderate',
+      'player.bring': 'players.moderate', 'player.spectate': 'players.moderate', 'player.message': 'players.moderate',
+    };
     const actor = await gameActor(app, req, body.actor, perm[body.action] ?? null);
     await audit(app.db, actor, { serverId: req.game!.serverId, action: `ingame.${body.action}`, targetType: 'player', details: body.details });
     return { ok: true };
@@ -502,6 +607,40 @@ export default async function gameRoutes(app: FastifyInstance) {
     const body = parse(z.object({ overrides: z.unknown(), expectedVersion: z.number().int().min(0), note: z.string().trim().min(3).max(500), actor: actorSchema }), req.body);
     const actor = await gameActor(app, req, body.actor, 'settings.manage');
     return saveConfig(app, req.game!.serverId, body.overrides, body.expectedVersion, body.note, actor);
+  });
+
+  app.get('/admin/replays', async (req) => {
+    const q = parse(z.object({ page: z.coerce.number().int().min(1).default(1), pageSize: z.coerce.number().int().min(1).max(50).default(20) }), req.query);
+    const sid = req.game!.serverId;
+    const total = (await app.db.query<{ n: number }>('SELECT count(*)::int AS n FROM replays WHERE server_id = $1', [sid])).rows[0]!.n;
+    const items = (
+      await app.db.query<ReplayRow>(`SELECT ${REPLAY_COLUMNS} FROM replays r WHERE r.server_id = $1 ORDER BY r.created_at DESC LIMIT $2 OFFSET $3`, [sid, q.pageSize, (q.page - 1) * q.pageSize])
+    ).rows;
+    return { items, total, page: q.page, pageSize: q.pageSize };
+  });
+
+  app.get('/admin/replays/:id', async (req) => {
+    const { id } = parse(z.object({ id: z.uuid() }), req.params);
+    const replay = await getReplay(app.db, req.game!.serverId, id);
+    return { replay, parts: await replayParts(app.db, id) };
+  });
+
+  // Base64 so the game server can relay it to the in-game panel without binary handling in Lua.
+  app.get('/admin/replays/:id/parts/:idx', async (req) => {
+    const { id, idx } = parse(z.object({ id: z.uuid(), idx: z.coerce.number().int().min(0).max(REPLAY_MAX_PARTS - 1) }), req.params);
+    const replay = await getReplay(app.db, req.game!.serverId, id);
+    const part = (await app.db.query<{ data: Buffer; duration_ms: number }>('SELECT data, duration_ms FROM replay_parts WHERE replay_id = $1 AND idx = $2', [id, idx])).rows[0];
+    if (!part) throw notFound('Replay part not found');
+    return { mime: replay.mime, durationMs: part.duration_ms, data: part.data.toString('base64') };
+  });
+
+  app.post('/admin/replays/:id/viewed', async (req) => {
+    const { id } = parse(z.object({ id: z.uuid() }), req.params);
+    const body = parse(z.object({ actor: actorSchema }), req.body);
+    const actor = await gameActor(app, req, body.actor, 'replays.view');
+    const replay = await getReplay(app.db, req.game!.serverId, id);
+    await audit(app.db, actor, { serverId: req.game!.serverId, action: 'replay.view', targetType: 'replay', targetId: id, details: { player: replay.player_name } });
+    return { ok: true };
   });
 
   app.get('/admin/system-events', async (req) => {

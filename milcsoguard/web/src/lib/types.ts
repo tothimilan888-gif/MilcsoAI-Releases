@@ -26,6 +26,13 @@ export interface Ban {
   identifiers: string[];
 }
 
+export interface Replay {
+  id: string; player_id: string | null; player_name: string; kind: 'ban' | 'manual'; status: 'requested' | 'uploading' | 'ready' | 'failed';
+  error: string | null; reason: string; ban_id: string | null; ban_code: string | null; requested_by_label: string; mime: string;
+  width: number | null; height: number | null; fps: number | null; duration_ms: number; size_bytes: number; part_count: number;
+  created_at: string; completed_at: string | null;
+}
+
 export interface Player { id: string; last_name: string; first_seen: string; last_seen: string; detections: number; active_bans: number; online: boolean }
 
 export interface OnlinePlayer { session_id: string; player_id: string; net_id: number; name: string; connected_at: string; last_ping: number | null; risk_score: number; monitored: boolean; session_detections: number }

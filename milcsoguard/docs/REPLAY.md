@@ -1,0 +1,64 @@
+# POV visszajátszás (ban előtti utolsó másodpercek)
+
+Kitiltás előtt a szerver bekéri a játékos kliensétől a **saját nézete utolsó ~15 másodpercét**. A felvételt a webes dashboardon (Banok → ban részletei, illetve Visszajátszások) és a játékon belüli panelen (Visszajátszások) is meg lehet nézni. Egy online játékostól az admin kézzel is kérhet felvételt, például egy report kivizsgálásához.
+
+## Hogyan működik
+
+```
+játékos kliense (NUI, rejtett)                FXServer (MilcsoGuard)                  backend (PostgreSQL)
+──────────────────────────────                ─────────────────────                  ────────────────────
+játékkép → WebGL → canvas → MediaRecorder
+5 mp-es önálló WebM darabok, a memóriában
+mindig ≥ 15 mp marad, a régi törlődik
+                       ◄── capture(id) ── ban / admin kérés / web kérés
+darabok base64-ben, 240 KB-os csomagokban ─►  ellenőrzi: csak attól a játékostól,
+  (latent event, sávszél-korlátozva)          méret, formátum, darabszám
+                                              ─► POST /game/replays, PUT …/parts/N ─►  tárolás, banhoz kötés
+                                              DropPlayer (ban esetén) ← feltöltés után
+```
+
+* **Mi kerül a felvételre:** csak a játék képe (a GTA back buffere). Nem kerül rá az asztal, más ablak, mikrofon, sőt a NUI (például a telefon UI) sem. A natívokkal rajzolt Lua menük (DrawText/DrawRect) a játékkép részei, ezért **látszanak**. A DirectX overlay-ként rajzolt külső menük általában nem.
+* **Mikor hagyja el a gépet:** csak bannál (ha `Config.Replay.onBan = true`) vagy admin kérésre (`replays.request` jog, auditálva). Egyébként a memóriában marad és felülíródik.
+* **Formátum:** WebM (VP8), alapból 854×480, 15 fps, ~700 kbit/s, ami 15 másodpercre ~1,3 MB. Minden darab önálló fájl, a lejátszó egymás után játssza le őket. Az utolsó darab vége a ban vagy a kérés pillanata.
+* **Ban közben:** a ban azonnal érvénybe lép (helyi gyorsítótár), ezért az újracsatlakozás ilyenkor már elutasított. A játékos egy saját routing bucketbe kerül és lefagy, hogy a feltöltés alatt se zavarjon senkit. Ezután a szerver lecsatlakoztatja, legkésőbb `uploadTimeoutSeconds` (25 mp) után. Ha a kliens felvevője nem fut, nincs várakozás, a ledobás azonnal megtörténik.
+
+## Amit őszintén tudni kell
+
+* **A kliensen fut, ezért megkerülhető.** Egy csaló letilthatja a NUI-t, hamis vagy üres videót küldhet, vagy kiléphet (Alt+F4) a feltöltés közben. A szerver ezt kezeli: méret- és formátumellenőrzés, időtúllépés, a már beérkezett teljes darabok megmaradnak. A visszajátszás **bizonyíték, de nem perdöntő**. A hiánya sem bizonyít semmit, mindig a detektálásokkal együtt kell értékelni.
+* **A játékkép-hook nem lett valódi FiveM kliensen kipróbálva.** A módszer (CfxTexture: 1×1 textúra + `TEXTURE_WRAP_T` szekvencia) pontosan az, amit a CitizenFX hivatalos `screenshot-basic` / `@citizenfx/three` kódja használ, ezt a forrásból ellenőriztük. Headless Chromiumban viszont nincs GTA, így ott fekete a kép: a felvétel, a darabolás, a feltöltés és a lejátszás tesztelt, a valódi játékkép nem. **Első lépésként próbáld ki saját magadon:** Panel → Játékosok → saját magad → *Visszajátszás kérése* (Owner-ként), majd nézd meg a felvételt.
+* **Teljesítmény a kliensen:** másodpercenként 15 kis WebGL rajzolás és szoftveres VP8 kódolás 480p-ben. Ez egy átlagos gépen pár százalék CPU, gyenge gépen érezhető lehet. Ha gond van, csökkentsd: `fps = 10`, `width = 640, height = 360`, vagy kapcsold ki (`enabled = false`).
+* **Adatvédelem:** a játékosok képernyőjéről (a játékról) készül felvétel. Írd bele a szerver szabályzatába vagy az adatkezelési tájékoztatóba, és állítsd be a megőrzési időt (Szerver → adatmegőrzés, `replaysDays`, alapból 30 nap). A megnyitás és a kérés auditnaplóba kerül (`replay.view`, `replay.request`).
+
+## Beállítások (`config/config.lua` → `Config.Replay`)
+
+| Kulcs | Alap | Leírás |
+|---|---|---|
+| `enabled` | `true` | A kliensoldali felvevő és a funkció ki/be |
+| `seconds` | 15 | Legalább ennyi videó marad meg a pillanat előtt |
+| `segmentSeconds` | 5 | Ilyen hosszú darabokra vág (ennyivel lehet hosszabb a felvétel) |
+| `width` / `height` / `fps` | 854 / 480 / 15 | Felbontás és képkockaszám |
+| `bitrateKbps` | 700 | Videó bitráta |
+| `onBan` | `true` | Ban előtt bekéri a felvételt |
+| `isolateOnBan` | `true` | Saját routing bucket + fagyasztás a feltöltés alatt |
+| `uploadTimeoutSeconds` | 25 | Ennyi idő után a bannolt játékos mindenképp lecsatlakozik |
+| `uploadBps` | 500000 | Kliens → szerver feltöltési sávszél (bájt/s) |
+| `maxBytes` | 12 MB | Egy felvétel felső határa |
+| `maxConcurrent` | 4 | Egyszerre futó feltöltések |
+
+Backend: `REPLAY_STORAGE_LIMIT_MB` (alap 1024) a szerverenkénti tárhelykorlát. Ha betelik, a legrégebbi felvételek törlődnek. **Aktív banhoz tartozó felvétel soha nem törlődik**, se helyhiány, se megőrzési idő miatt (a fellebbezéshez kell). Ha minden tárolt felvétel aktív banhoz tartozik, az új feltöltés `507`-et kap.
+
+## Jogosultságok
+
+| Jog | Mit enged |
+|---|---|
+| `replays.view` | Felvételek listázása és lejátszása (web és játékon belül), auditálva |
+| `replays.request` | Felvétel kérése egy online játékostól. Azonos vagy magasabb szintű admintól nem lehet kérni |
+| `servers.manage` | Felvétel törlése |
+
+Alapból Moderator, Administrator, AdminController, valamint minden magasabb szerepkör kapja meg (Viewer nem).
+
+## Hibakeresés
+
+* **A játékos profilján „Felvevő: nem támogatott”.** A kliens CEF-je nem ismeri a MediaRecorder-t vagy a captureStream-et. Ilyenkor nincs felvétel, a ban azonnal lefut.
+* **„sikertelen – timeout”.** A kliens nem küldött semmit 25 mp alatt. Lehet blokkolás, nagyon lassú feltöltés vagy kilépés. Növelheted a `uploadBps` vagy az `uploadTimeoutSeconds` értékét.
+* **Fekete kép valódi szerveren.** A játékkép-hook nem működik az adott FiveM buildben. Jelezd: a funkció ilyenkor csak a ban előtti időzítést és a feltöltést adja.

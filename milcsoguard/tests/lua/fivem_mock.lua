@@ -284,6 +284,12 @@ function GetEntityScript(h) local e = E(h); return e and e.script end
 function NetworkGetEntityOwner(h) local e = E(h); return e and e.owner end
 function NetworkGetEntityFromNetworkId(id) for h, e in pairs(Mock.entities) do if e.netId == id then return h end end; return 0 end
 function IsPedAPlayer(h) local e = E(h); return e and e.isPlayer or false end
+function SetPlayerRoutingBucket(src, b) local p = P(src); if p then p.bucket = b end end
+function FreezeEntityPosition(h, f) local e = E(h); if e then e.frozen = f end end
+function SetEntityCoords(h, x, y, z) local e = E(h); if e then e.pos = Mock.vec(x, y, z) end end
+function TriggerLatentClientEvent(name, target, bps, ...)
+    Mock.clientEvents[#Mock.clientEvents + 1] = { name = name, target = target, latent = bps, args = table.pack(...) }
+end
 function RemoveWeaponFromPed(h, w) local e = E(h); if e and e.weapon == w then e.weapon = 2725352035 end; Mock.removedWeapons = (Mock.removedWeapons or 0) + 1 end
 
 return Mock

@@ -35,7 +35,8 @@ function Api.request(method, path, body, cb, opts)
     if k == '' then return cb(false, 0, nil, 'missing milcsoguard_api_key convar') end
     local done = false
     local timeoutMs = (opts and opts.timeoutMs) or Config.Api.timeoutMs
-    local payload = body ~= nil and json.encode(body) or ''
+    -- opts.rawBody: pre-encoded JSON (large replay uploads)
+    local payload = (opts and opts.rawBody) or (body ~= nil and json.encode(body) or '')
     local headers = {
         ['Authorization'] = 'Bearer ' .. k,
         ['Content-Type'] = 'application/json',

@@ -8,6 +8,7 @@ import { parse } from '../lib/validate.js';
 import { BAN_COLUMNS, banIdentifiers, createBan, revokeBan, type BanRow } from '../services/bans.js';
 import { escapeLike } from '../services/detections.js';
 import { playerIdentifiers } from '../services/players.js';
+import { REPLAY_COLUMNS } from '../services/replays.js';
 
 export const MAX_TEMP_BAN_SECONDS = 365 * 86400;
 
@@ -79,7 +80,10 @@ export default async function banRoutes(app: FastifyInstance) {
         [req.access!.serverId, banId],
       )
     ).rows;
-    return { ban: { ...ban, identifiers: ids.map((i) => (show ? i : maskIdentifier(i))) }, detections, history };
+    const replays = req.access!.permissions.has('replays.view')
+      ? (await app.db.query(`SELECT ${REPLAY_COLUMNS} FROM replays r WHERE r.ban_id = $1 ORDER BY r.created_at`, [banId])).rows
+      : [];
+    return { ban: { ...ban, identifiers: ids.map((i) => (show ? i : maskIdentifier(i))) }, detections, history, replays };
   });
 
   app.post('/servers/:serverId/bans', { preHandler: app.requireServer('bans.create') }, async (req) => {

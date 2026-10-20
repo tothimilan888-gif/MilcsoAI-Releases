@@ -103,7 +103,19 @@ A ban a játékos **összes ismert azonosítóját** tiltja (IP soha). Ha egy ba
 | POST | `/servers/:serverId/integrations/discord/test` | `integrations.manage` |
 | GET | `/servers/:serverId/stream` | tag – Server-Sent Events, eseményenként jogosultság szerint szűrve |
 
-SSE események: `detection.created`, `detection.reviewed`, `ban.created`, `ban.revoked`, `players.changed`, `server.status`, `config.changed`, `whitelist.changed`. A payload csak azonosítókat és összefoglalót tartalmaz; a kliens újratölti a részleteket.
+### POV visszajátszások
+
+| Metódus | Útvonal | Jog |
+|---|---|---|
+| GET | `/servers/:serverId/replays?kind&status&playerId&banId&page` | `replays.view` (+ tárhelyhasználat) |
+| GET | `/servers/:serverId/replays/:replayId` | `replays.view` – metaadat + részek; a megnyitás auditálva (`replay.view`) |
+| GET | `/servers/:serverId/replays/:replayId/parts/:idx` | `replays.view` – `video/webm` (bináris) |
+| DELETE | `/servers/:serverId/replays/:replayId` | `servers.manage` |
+| POST | `/servers/:serverId/players/:playerId/replay` `{reason}` | `replays.request` – online játékos kell (409 különben); `replay_request` parancsot küld a játékszervernek |
+
+A ban részletei (`GET …/bans/:banId`) és a játékos profil (`GET …/players/:playerId`) `replays` listát is ad, ha a felhasználónak van `replays.view` joga.
+
+SSE események: `detection.created`, `detection.reviewed`, `ban.created`, `ban.revoked`, `players.changed`, `server.status`, `config.changed`, `whitelist.changed`, `replay.updated`. A payload csak azonosítókat és összefoglalót tartalmaz; a kliens újratölti a részleteket.
 
 ## Játékszerver végpontok (`/api/v1/game`, API-kulcs)
 
@@ -118,8 +130,12 @@ SSE események: `detection.created`, `detection.reviewed`, `ban.created`, `ban.r
 | POST | `/bans` | Játékon belüli / automatikus ban (`localId` idempotens, `ageSeconds` = sorban töltött idő) |
 | POST | `/bans/:banId/revoke` | Játékon belüli feloldás |
 | GET | `/config` | Felülírások + whitelist |
-| GET | `/commands`, POST `/commands/:id/ack` | Web → játék parancssor (kick, ban_sync, config_sync, announce_admins) |
+| GET | `/commands`, POST `/commands/:id/ack` | Web → játék parancssor (kick, ban_sync, config_sync, announce_admins, replay_request) |
 | POST | `/system-events` | Resource leállás, elutasított konfiguráció stb. |
+| POST | `/replays` `{id, kind: ban\|manual, banId?, banLocalId?, requestedBy?, …}` | Felvétel bejelentése (idempotens; a web által kért felvételt `uploading`-ra állítja). Kézi kérésnél `requestedBy` = in-game admin, auditálva |
+| PUT | `/replays/:id/parts/:idx` `{durationMs, data: base64}` | Egy önálló WebM darab (≤ 4 MB, EBML fejléc kötelező, összesen ≤ 24 MB, tárhelykorlát → 507) |
+| POST | `/replays/:id/complete` `{status: ready\|failed, error?}` | Lezárás; darab nélkül mindig `failed` |
+| GET | `/admin/replays`, `/admin/replays/:id`, `/admin/replays/:id/parts/:idx` | Az in-game lejátszóhoz (base64) |
 | GET/POST/PUT | `/admin/*` | Az in-game panel adatai; minden módosító kérés `actor`-t küld, amit a backend auditál, és ha webes fiókhoz kötött, a webes szerepkör szerint is ellenőriz |
 
 ## Health

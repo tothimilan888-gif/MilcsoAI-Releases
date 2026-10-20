@@ -44,6 +44,7 @@ schema.lua alapértékek  <  config/config.lua (Config.Modules / Config.RiskOver
 | `Config.Grace.*` | join 25 s, respawn 8 s, modellváltás 6 s, bucket 6 s | Türelmi idő a mozgás/állapot ellenőrzésekhez |
 | `Config.TeleportZones` | üres | `{x, y, z, radius}` – itt induló/végződő teleport nem jelez |
 | `Config.Performance.*` | mozgás 1000 ms, állapot 2500 ms, fegyver 3000 ms, batch 24 | Ütemezés; a játékosok kötegekben, időben elosztva |
+| `Config.Replay.*` | be, 15 mp, 854×480@15, ban előtt | POV visszajátszás, lásd [REPLAY.md](REPLAY.md) |
 | `Config.TrustedResources` | üres | Entitást spawnolhat (a dashboard whitelistjével egyesítve) |
 | `Config.Modules` / `Config.RiskOverrides` | üres | Helyi felülírások (validálva) |
 
@@ -79,8 +80,9 @@ Lásd `backend/.env.example` (minden változó induláskor validálva; hiányzó
 | `RETENTION_JOB_MINUTES` | Karbantartó job gyakorisága |
 | `GAME_HEARTBEAT_STALE_SECONDS` | Ennyi heartbeat nélkül a szerver offline |
 | `BOOTSTRAP_OWNER_EMAIL/_USERNAME/_PASSWORD` | Az első platform owner létrehozása shell nélküli hostokon (Render). Csak akkor hat, ha még nincs owner; első belépéskor jelszócsere kötelező; utána töröld őket |
+| `REPLAY_STORAGE_LIMIT_MB` | Szerverenkénti tárhely a visszajátszásoknak (alap 1024). Teli tárhelynél a legrégebbi, aktív banhoz nem tartozó felvétel törlődik |
 | `ALLOW_INSECURE_GAME_HTTP` | Csak fejlesztéshez; produkcióban tiltott (a backend nem indul) |
 
 ## Adatmegőrzés
 
-Szerverenként (*Szerver* oldal): detektálások, audit, rendszeresemények, munkamenetek napokban. Banhoz csatolt detektálás és maguk a banok nem törlődnek automatikusan. Lásd [BACKUP.md](BACKUP.md).
+Szerverenként (*Szerver* oldal): detektálások, audit, rendszeresemények, munkamenetek, visszajátszások (`replaysDays`, alap 30) napokban. Aktív banhoz tartozó visszajátszás nem törlődik. Banhoz csatolt detektálás és maguk a banok nem törlődnek automatikusan. Lásd [BACKUP.md](BACKUP.md).

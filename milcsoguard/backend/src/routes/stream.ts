@@ -10,6 +10,7 @@ const EVENT_PERMISSION: Record<string, string> = {
   'players.changed': 'players.view',
   'config.changed': 'settings.view',
   'whitelist.changed': 'whitelist.view',
+  'replay.updated': 'replays.view',
 };
 
 export default async function streamRoutes(app: FastifyInstance) {

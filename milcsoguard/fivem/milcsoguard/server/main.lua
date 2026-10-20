@@ -138,8 +138,11 @@ end)
 
 AddEventHandler('playerDropped', function(reason)
     local src = source
+    if MG.Replay then MG.Replay.onDropped(src) end
+    local p = MG.State.get(src)
+    if p and not p.banning then MG.State.rememberDropped(p, reason) end
+    if MG.Admin then MG.Admin.onDropped(src) end
     MG.State.remove(src)
-    if MG.Admin then MG.Admin.open[src] = nil end
     if MG.Api.enabled() then
         MG.Api.request('POST', '/players/dropped', { netId = src, reason = U.sanitize(reason or '', 200) }, function() end)
     end

@@ -64,6 +64,11 @@ end
 
 local function execute(p, rec, now)
     local action = rec.action
+    if p.banning then
+        -- already being removed (replay upload in progress): record, but do not act twice
+        rec.actionResult = 'already banned'
+        return
+    end
     if action == 'warn' or action == 'monitor' then
         if Config.Detections.warnPlayerMessage ~= '' and action == 'warn' then
             TriggerClientEvent('milcsoguard:notice', p.src, Config.Detections.warnPlayerMessage)
@@ -87,7 +92,7 @@ local function execute(p, rec, now)
             detectionLocalIds = recentLocalIds(p.src, 10),
         })
         rec.actionResult = 'banned ' .. (D.risk.autoBanDuration and U.formatDuration(D.risk.autoBanDuration) or 'permanent')
-        SetTimeout(250, function() DropPlayer(tostring(p.src), MG.Bans.message(ban)) end)
+        MG.Bans.enforce(p.src, ban)
         if D.breaker:isOpen(now) then
             Log.warn('auto-ban circuit breaker reached its limit; further automatic bans become kicks')
             if MG.Admin then MG.Admin.broadcastSystem('Auto-ban circuit breaker aktív: a további automatikus banok kickre módosulnak.', 'CRITICAL') end

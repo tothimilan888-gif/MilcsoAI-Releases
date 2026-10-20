@@ -9,7 +9,7 @@
 
   const RESOURCE = typeof GetParentResourceName === 'function' ? GetParentResourceName() : 'milcsoguard';
   const brand = window.MG_BRAND || {};
-  const state = { info: null, perms: new Set(), page: 'dashboard', pageArg: null, live: [], reqId: 0, pending: new Map() };
+  const state = { info: null, perms: new Set(), page: 'dashboard', pageArg: null, live: [], reqId: 0, pending: new Map(), spectating: null, player: null };
 
   // ------------------------------------------------------------------ safe templating
   class Safe { constructor(s) { this.s = s; } toString() { return this.s; } }
@@ -46,6 +46,8 @@
   const fmtTime = (iso) => { if (!iso) return '–'; const d = new Date(iso); return isNaN(d) ? String(iso) : d.toLocaleString('hu-HU', { dateStyle: 'short', timeStyle: 'medium' }); };
   const sev = (s) => html`<span class="badge sev-${['INFO', 'LOW', 'MEDIUM', 'HIGH', 'CRITICAL'].includes(s) ? s : 'INFO'}">${s}</span>`;
   const ACTION_LABEL = { log: 'Napló', warn: 'Figyelmeztetés', monitor: 'Megfigyelés', kick: 'Kick', ban: 'Ban' };
+  const RECORDER_LABEL = { recording: 'fut (visszajátszás elérhető)', unsupported: 'nem támogatott a kliensen', error: 'hiba', idle: 'áll', unknown: 'nem jelentkezett' };
+  const REPLAY_STATUS = { requested: 'kérve', uploading: 'feltöltés', ready: 'kész', failed: 'sikertelen' };
   const REVIEW_LABEL = { pending: 'Függő', confirmed: 'Megerősítve', false_positive: 'Téves', dismissed: 'Elvetve' };
   const risk = (n) => { const v = Math.max(0, Math.min(100, Math.round((Number(n) || 0) / 1.4))); return html`<div class="risk"><div class="bar"><i style="width:${v}%"></i></div><span>${Math.round(Number(n) || 0)}</span></div>`; };
   const spinner = () => html`<div class="spinner" aria-label="Betöltés"></div>`;
@@ -98,6 +100,7 @@
     admins: '<circle cx="12" cy="7" r="4"/><path d="M4 21c0-4 4-7 8-7s8 3 8 7"/><path d="m17 3 1 2 2 .3-1.5 1.4.4 2.1L17 7.8 15.1 8.8l.4-2.1L14 5.3l2-.3z"/>',
     logs: '<path d="M6 2h9l5 5v15H6z"/><path d="M14 2v6h6M9 13h8M9 17h8M9 9h3"/>',
     settings: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',
+    replays: '<rect x="3" y="5" width="14" height="14" rx="2"/><path d="m17 10 4-3v10l-4-3"/><path d="m8 9 4 3-4 3z"/>',
     system: '<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4M7 10l2 2 3-4 2 3 3-2"/>',
   };
   const PAGES = [
@@ -105,6 +108,7 @@
     { key: 'players', label: 'Játékosok', perm: 'players.view' },
     { key: 'detections', label: 'Detektálások', perm: 'detections.view' },
     { key: 'bans', label: 'Banok', perm: 'bans.view' },
+    { key: 'replays', label: 'Visszajátszások', perm: 'replays.view' },
     { key: 'whitelist', label: 'Whitelist', perm: 'whitelist.view' },
     { key: 'admins', label: 'Adminok', perm: 'admins.view' },
     { key: 'logs', label: 'Naplók', perm: 'audit.view' },
@@ -166,7 +170,8 @@
       </div>`);
   };
 
-  VIEWS.players = async function () {
+  VIEWS.players = async function (arg) {
+    if (arg && arg.tab === 'recent') return recentPlayers();
     const r = await api('players.list');
     if (!r.ok) return setContent(errorBox(r.error));
     const players = r.data || [];
@@ -186,12 +191,44 @@
         </td></tr>`) : html`<tr><td colspan="6">${empty('Nincs találat.')}</td></tr>`);
       bindPlayerActions($('#playersBody'), players);
     };
-    setContent(html`<div class="toolbar"><input id="pSearch" placeholder="Keresés név, ID vagy azonosító alapján" style="width:320px"><div class="spacer"></div><span class="muted">${players.length} online</span><button class="btn" id="pRefresh">Frissítés</button></div>
+    setContent(html`<div class="toolbar">${playerTabs('online')}<input id="pSearch" placeholder="Keresés név, ID vagy azonosító alapján" style="width:300px"><div class="spacer"></div><span class="muted">${players.length} online</span><button class="btn" id="pRefresh">Frissítés</button></div>
       <div class="card" style="padding:4px 6px"><table><thead><tr><th>ID</th><th>Név</th><th>Ping</th><th>Kockázat</th><th>Csatlakozott</th><th></th></tr></thead><tbody id="playersBody"></tbody></table></div>`);
     $('#pSearch').oninput = (e) => draw(e.target.value);
     $('#pRefresh').onclick = () => go('players');
+    bindTabs();
     draw('');
   };
+
+  function playerTabs(active) {
+    return html`<div class="tabs"><button data-ptab="online" class="${active === 'online' ? 'active' : ''}">Online</button><button data-ptab="recent" class="${active === 'recent' ? 'active' : ''}">Nemrég kilépett</button></div>`;
+  }
+  function bindTabs() {
+    document.querySelectorAll('[data-ptab]').forEach((b) => { b.onclick = () => go('players', { tab: b.dataset.ptab }); });
+  }
+
+  /** Players who left this session: they can still be banned by their stored identifiers. */
+  async function recentPlayers() {
+    const r = await api('players.recent');
+    if (!r.ok) return setContent(errorBox(r.error));
+    const list = r.data || [];
+    setContent(html`<div class="toolbar">${playerTabs('recent')}<div class="spacer"></div><span class="muted">${list.length} játékos (a szerver újraindításáig)</span></div>
+      <div class="card" style="padding:4px 6px">${list.length ? html`<table><thead><tr><th>Név</th><th>Utolsó ID</th><th>Kilépett</th><th>Ok</th><th>Kockázat</th><th>Azonosítók</th><th></th></tr></thead><tbody>
+        ${list.map((p, i) => html`<tr><td><b>${p.name}</b></td><td class="mono">${p.id}</td><td class="small">${fmtTime(p.droppedAt)}</td><td class="small muted">${p.reason}</td><td>${risk(p.risk)}</td>
+          <td class="mono small">${(p.identifiers || []).slice(0, 3).map((x) => html`<div>${x}</div>`)}</td>
+          <td class="actions">${can('bans.create') ? html`<button class="btn sm danger" data-oban="${i}">Offline ban</button>` : ''}</td></tr>`)}
+      </tbody></table>` : empty('Még senki nem lépett ki a szerver indulása óta.')}</div>`);
+    bindTabs();
+    document.querySelectorAll('[data-oban]').forEach((b) => {
+      b.onclick = async () => {
+        const p = list[Number(b.dataset.oban)];
+        const res = await banModal(p.name, 'A játékos már nincs fent: a tárolt azonosítói kerülnek tiltásra, a következő csatlakozáskor nem jut be.');
+        if (!res) return;
+        const rr = await api('ban.offline', Object.assign({ key: p.key, reason: res.reason }, res.duration));
+        toast(rr.ok ? `${p.name} bannolva (offline)` : rr.error, rr.ok ? 'success' : 'error');
+        if (rr.ok) go('players', { tab: 'recent' });
+      };
+    });
+  }
 
   function bindPlayerActions(root, players) {
     root.querySelectorAll('[data-act]').forEach((b) => {
@@ -205,6 +242,9 @@
           const r = await api('player.monitor', { id, minutes: 30 });
           toast(r.ok ? `${p.name} megfigyelés alatt (30 perc)` : r.error, r.ok ? 'success' : 'error');
         }
+        if (b.dataset.act === 'replay') return requestReplay(p);
+        if (b.dataset.act === 'message') return messagePlayer(p);
+        if (['freeze', 'unfreeze', 'goto', 'bring', 'spectate'].includes(b.dataset.act)) return moderate(b.dataset.act, p);
       };
     });
   }
@@ -217,17 +257,53 @@
     if (r.ok && state.page === 'players') go('players');
   }
 
-  async function banPlayer(p) {
+  async function banModal(name, text) {
     const options = [['3600', '1 óra'], ['86400', '1 nap'], ['259200', '3 nap'], ['604800', '7 nap'], ['2592000', '30 nap']];
     if (can('bans.permanent')) options.push(['permanent', 'Végleges']);
     const extra = render(html`<label class="field">Időtartam<select data-field="duration">${options.map(([v, l]) => html`<option value="${v}">${l}</option>`)}</select></label>`);
-    const res = await modal({ title: `Ban: ${p.name}`, text: 'A játékos minden ismert azonosítója tiltásra kerül, és azonnal lecsatlakozik.', confirmLabel: 'Ban kiadása', danger: true, extra });
+    const res = await modal({ title: `Ban: ${name}`, text, confirmLabel: 'Ban kiadása', danger: true, extra });
+    if (!res) return null;
+    return { reason: res.reason, duration: res.values.duration === 'permanent' ? { permanent: true } : { durationSeconds: Number(res.values.duration) } };
+  }
+
+  async function banPlayer(p) {
+    const text = state.info.replayEnabled
+      ? 'A játékos minden ismert azonosítója tiltásra kerül. Lecsatlakoztatás előtt a szerver bekéri a POV visszajátszását (utolsó ~15 mp), utána dobja le.'
+      : 'A játékos minden ismert azonosítója tiltásra kerül, és azonnal lecsatlakozik.';
+    const res = await banModal(p.name, text);
     if (!res) return;
-    const payload = { id: p.id, reason: res.reason };
-    if (res.values.duration === 'permanent') payload.permanent = true; else payload.durationSeconds = Number(res.values.duration);
-    const r = await api('ban.create', payload);
-    toast(r.ok ? `${p.name} bannolva` : r.error, r.ok ? 'success' : 'error');
+    const r = await api('ban.create', Object.assign({ id: p.id, reason: res.reason }, res.duration));
+    toast(r.ok ? (r.data.replay ? `${p.name} bannolva – visszajátszás feltöltése…` : `${p.name} bannolva`) : r.error, r.ok ? 'success' : 'error');
     if (r.ok && (state.page === 'players' || state.page === 'player')) go('players');
+  }
+
+  async function requestReplay(p) {
+    const res = await modal({ title: `Visszajátszás kérése: ${p.name}`, text: 'A játékos kliense elküldi az utolsó ~15 másodperc saját nézetét. A játékos nem kap értesítést, a kérés auditnaplóba kerül.', confirmLabel: 'Kérés' });
+    if (!res) return;
+    const r = await api('replay.request', { id: p.id, reason: res.reason });
+    if (!r.ok) return toast(r.error, 'error');
+    toast(r.data.recorder === 'recording' ? 'Felvétel kérve – értesítünk, ha elkészült.' : `Felvétel kérve, de a játékos felvevője: ${r.data.recorder} – lehet, hogy nem érkezik videó.`, r.data.recorder === 'recording' ? 'success' : '');
+  }
+
+  async function messagePlayer(p) {
+    const extra = render(html`<label class="field">Üzenet (max. 200 karakter)<input data-field="message" maxlength="200"></label>`);
+    const res = await modal({ title: `Üzenet: ${p.name}`, text: 'A játékos a képernyőn látja, [Admin] jelöléssel.', confirmLabel: 'Küldés', reason: false, extra });
+    if (!res) return;
+    const r = await api('player.message', { id: p.id, message: res.values.message || '' });
+    toast(r.ok ? 'Üzenet elküldve' : r.error, r.ok ? 'success' : 'error');
+  }
+
+  const MOD_LABEL = { freeze: 'lefagyasztva', unfreeze: 'feloldva', goto: 'odateleportáltál', bring: 'idehozva', spectate: 'spectate elindítva' };
+  async function moderate(act, p) {
+    const action = act === 'unfreeze' ? 'player.freeze' : 'player.' + act;
+    const payload = { id: p.id };
+    if (act === 'freeze' || act === 'unfreeze') payload.freeze = act === 'freeze';
+    const r = await api(action, payload);
+    toast(r.ok ? `${p.name}: ${MOD_LABEL[act]}` : r.error, r.ok ? 'success' : 'error');
+    if (!r.ok) return;
+    // Teleports and spectating happen in the game world: get the panel out of the way.
+    if (act === 'goto' || act === 'spectate') close();
+    else if (state.page === 'player') go('player', p.id);
   }
 
   VIEWS.player = async function (id) {
@@ -236,14 +312,22 @@
     const { player: p, riskHistory, localDetections, remote } = r.data;
     const rd = remote || {};
     setContent(html`
-      <div class="toolbar"><button class="btn ghost" id="back">← Vissza</button><div class="spacer"></div>
+      <div class="toolbar wrap"><button class="btn ghost" id="back">← Vissza</button><div class="spacer"></div>
+        ${can('players.moderate') ? html`
+          <button class="btn sm" data-act="spectate" data-id="${p.id}">Spectate</button>
+          <button class="btn sm" data-act="goto" data-id="${p.id}">Odamegyek</button>
+          <button class="btn sm" data-act="bring" data-id="${p.id}">Idehozom</button>
+          <button class="btn sm" data-act="${p.frozen ? 'unfreeze' : 'freeze'}" data-id="${p.id}">${p.frozen ? 'Fagyasztás feloldása' : 'Fagyasztás'}</button>
+          <button class="btn sm" data-act="message" data-id="${p.id}">Üzenet</button>` : ''}
+        ${can('replays.request') && state.info.replayEnabled ? html`<button class="btn sm" data-act="replay" data-id="${p.id}">Visszajátszás kérése</button>` : ''}
         ${can('detections.review') ? html`<button class="btn sm" data-act="monitor" data-id="${p.id}">Megfigyelés 30 percig</button>` : ''}
         ${can('players.kick') ? html`<button class="btn sm" data-act="kick" data-id="${p.id}">Kick</button>` : ''}
         ${can('bans.create') ? html`<button class="btn sm danger" data-act="ban" data-id="${p.id}">Ban</button>` : ''}</div>
       <div class="grid two">
         <div class="card"><h2>${p.name} · #${p.id}</h2>
           <dl class="kv"><dt>Kockázat</dt><dd>${risk(p.risk)}</dd><dt>Ping</dt><dd>${p.ping} ms</dd>
-          <dt>Megfigyelt</dt><dd>${p.monitored ? 'igen' : 'nem'}</dd><dt>Admin</dt><dd>${p.admin ? `${p.admin.role} (${p.admin.source})` : '–'}</dd>
+          <dt>Megfigyelt</dt><dd>${p.monitored ? 'igen' : 'nem'}${p.frozen ? html` <span class="badge sev-MEDIUM">fagyasztva</span>` : ''}</dd>
+          <dt>Felvevő</dt><dd>${RECORDER_LABEL[p.recorder] || p.recorder}</dd><dt>Admin</dt><dd>${p.admin ? `${p.admin.role} (${p.admin.source})` : '–'}</dd>
           <dt>Azonosítók</dt><dd class="mono">${(p.identifiers || []).map((i) => html`<div>${i}</div>`)}</dd>
           ${rd.player ? html`<dt>Első látogatás</dt><dd>${fmtTime(rd.player.first_seen)}</dd><dt>Jegyzet</dt><dd>${rd.player.notes || '–'}</dd>` : ''}</dl>
         </div>
@@ -340,6 +424,82 @@
       };
     });
   };
+
+  VIEWS.replays = async function (arg) {
+    const q = Object.assign({ page: 1 }, arg || {});
+    const r = await api('replays.list', q);
+    if (!r.ok) return setContent(errorBox(r.error));
+    const pg = r.data;
+    const pages = Math.max(1, Math.ceil(pg.total / pg.pageSize));
+    setContent(html`
+      <div class="notice">POV visszajátszás: a játékos saját nézete a ban (vagy a kérés) előtti utolsó ~15 másodpercből. A kliens rögzíti, ezért egy csaló blokkolhatja – a hiányzó felvétel önmagában nem bizonyíték. Minden megnyitás auditnaplóba kerül.</div>
+      <div class="card" style="padding:4px 6px">${pg.items.length ? html`<table><thead><tr><th>Idő</th><th>Játékos</th><th>Típus</th><th>Ok / ban</th><th>Hossz</th><th>Állapot</th><th>Kérte</th><th></th></tr></thead><tbody>
+        ${pg.items.map((x, i) => html`<tr><td class="small">${fmtTime(x.created_at)}</td><td><b>${x.player_name || '?'}</b></td>
+          <td>${x.kind === 'ban' ? html`<span class="badge sev-HIGH">ban</span>` : html`<span class="badge neutral">kézi</span>`}</td>
+          <td class="small">${x.reason}${x.ban_code ? html`<div class="mono muted">${x.ban_code}</div>` : ''}</td>
+          <td>${x.duration_ms ? `${Math.round(x.duration_ms / 1000)} mp` : '–'}</td>
+          <td>${x.status === 'ready' ? html`<span class="badge ok">kész</span>` : x.status === 'failed' ? html`<span class="badge sev-HIGH" title="${x.error || ''}">sikertelen</span><div class="muted small">${x.error || ''}</div>` : html`<span class="badge sev-MEDIUM">${REPLAY_STATUS[x.status] || x.status}</span>`}</td>
+          <td class="small">${x.requested_by_label}</td>
+          <td class="actions">${x.status === 'ready' ? html`<button class="btn sm primary" data-play="${i}">Lejátszás</button>` : ''}</td></tr>`)}
+      </tbody></table>` : empty('Még nincs visszajátszás.')}</div>
+      <div class="pager"><button class="btn sm" id="rPrev" ${q.page <= 1 ? raw('disabled') : ''}>‹</button><span>${q.page} / ${pages}</span><button class="btn sm" id="rNext" ${q.page >= pages ? raw('disabled') : ''}>›</button></div>`);
+    $('#rPrev').onclick = () => go('replays', { page: q.page - 1 });
+    $('#rNext').onclick = () => go('replays', { page: q.page + 1 });
+    document.querySelectorAll('[data-play]').forEach((b) => { b.onclick = () => playReplay(pg.items[Number(b.dataset.play)]); });
+  };
+
+  // ------------------------------------------------------------------ replay player
+  // Parts arrive one by one (latent events); each is a standalone WebM played in order.
+  const player = { id: null, urls: [], total: 0, current: 0 };
+
+  function stopPlayer() {
+    player.urls.forEach((u) => u && URL.revokeObjectURL(u));
+    player.id = null;
+    player.urls = [];
+  }
+
+  function playPart(i) {
+    const v = $('#rv');
+    if (!v) return;
+    player.current = i;
+    $('#rvPart').textContent = `${i + 1}. rész / ${player.total}${i === player.total - 1 ? ' – a végén a ban / kérés pillanata' : ''}`;
+    if (!player.urls[i]) { $('#rvStatus').textContent = 'Betöltés…'; $('#rvStatus').classList.remove('hidden'); return; }
+    $('#rvStatus').classList.add('hidden');
+    v.src = player.urls[i];
+    v.play().catch(() => undefined);
+  }
+
+  async function playReplay(rep) {
+    const r = await api('replay.play', { id: rep.id });
+    if (!r.ok) return toast(r.error, 'error');
+    stopPlayer();
+    player.id = rep.id;
+    player.total = r.data.parts;
+    player.urls = new Array(r.data.parts).fill(null);
+    const m = $('#modal');
+    m.innerHTML = render(html`<div class="box wide">
+      <h3>Visszajátszás – ${rep.player_name || '?'}</h3>
+      <div class="muted small">${rep.kind === 'ban' ? 'Ban előtti felvétel' : 'Kézi kérés'} · ${fmtTime(rep.created_at)} · ${Math.round((rep.duration_ms || 0) / 1000)} mp · ${rep.reason}</div>
+      <div class="video-wrap"><video id="rv" controls muted playsinline></video><div id="rvStatus" class="video-status">Betöltés…</div></div>
+      <div class="row"><span class="muted small" id="rvPart" style="margin-right:auto"></span><button class="btn" id="rvRestart">Elejétől</button><button class="btn primary" id="rvClose">Bezárás</button></div>
+    </div>`);
+    m.classList.remove('hidden');
+    $('#rv').onended = () => { if (player.current + 1 < player.total) playPart(player.current + 1); };
+    $('#rvRestart').onclick = () => playPart(0);
+    $('#rvClose').onclick = () => { m.classList.add('hidden'); m.innerHTML = ''; stopPlayer(); };
+    playPart(0);
+  }
+
+  function onReplayPart(part) {
+    if (!part || part.id !== player.id) return;
+    if (part.error) { const st = $('#rvStatus'); if (st) { st.textContent = 'Hiba: ' + part.error; st.classList.remove('hidden'); } return; }
+    if (typeof part.data !== 'string' || typeof part.idx !== 'number' || part.idx < 0 || part.idx >= player.total) return;
+    const bin = atob(part.data);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    player.urls[part.idx] = URL.createObjectURL(new Blob([bytes], { type: 'video/webm' }));
+    if (part.idx === player.current) playPart(part.idx);
+  }
 
   VIEWS.whitelist = async function () {
     const r = await api('whitelist.list');
@@ -485,6 +645,13 @@
     $('#brandTag').textContent = brand.tagline || 'Anticheat';
   }
 
+  function updateSpectate() {
+    const el = $('#specBar');
+    if (!state.spectating) { el.classList.add('hidden'); return; }
+    el.classList.remove('hidden');
+    $('#specName').textContent = state.spectating.name || ('#' + state.spectating.target);
+  }
+
   function updateStatus() {
     const el = $('#apiStatus');
     const i = state.info;
@@ -499,6 +666,8 @@
     $('#roleChip').textContent = `${info.role} · szint ${info.level}`;
     $('#version').textContent = `v${info.version}`;
     updateStatus();
+    state.spectating = info.spectating ? { target: info.spectating, name: (state.spectating && state.spectating.name) || '' } : null;
+    updateSpectate();
     $('#root').classList.remove('hidden');
     const first = PAGES.find((p) => can(p.perm));
     go(state.page && PAGES.some((p) => p.key === state.page && can(p.perm)) ? state.page : first ? first.key : 'dashboard');
@@ -511,9 +680,13 @@
   }
 
   $('#closeBtn').onclick = close;
+  $('#specStop').onclick = async () => {
+    const r = await api('player.spectate.stop');
+    if (!r.ok) toast(r.error, 'error');
+  };
   document.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape' || $('#root').classList.contains('hidden')) return;
-    if (!$('#modal').classList.contains('hidden')) { $('#modal').classList.add('hidden'); return; }
+    if (!$('#modal').classList.contains('hidden')) { $('#modal').classList.add('hidden'); $('#modal').innerHTML = ''; stopPlayer(); return; }
     close();
   });
 
@@ -529,6 +702,11 @@
       const rank = { INFO: 1, LOW: 2, MEDIUM: 3, HIGH: 4, CRITICAL: 5 };
       if ((rank[m.detection.severity] || 0) >= (rank[(state.info || {}).notifyMin] || 3)) toast(`${m.detection.severity}: ${m.detection.type} – ${m.detection.playerName} (#${m.detection.netId}) → ${ACTION_LABEL[m.detection.action] || m.detection.action}`, 'error');
       if (state.page === 'dashboard' && $('.modal.hidden')) go('dashboard');
+    } else if (m.type === 'replayPart') {
+      onReplayPart(m.part);
+    } else if (m.type === 'spectate') {
+      state.spectating = m.active ? { target: m.target, name: m.name } : null;
+      updateSpectate();
     } else if (m.type === 'system' && m.event) {
       toast(String(m.event.message), m.event.severity === 'CRITICAL' ? 'error' : '');
     }

@@ -4,12 +4,13 @@ import { Link, useParams } from 'react-router-dom';
 import { api, qs } from '../lib/api';
 import { useCan, useServer } from '../lib/server';
 import { fmtDate, fmtDuration, fmtRelative } from '../lib/format';
-import type { Ban, Detection, OnlinePlayer, Page, Player } from '../lib/types';
+import type { Ban, Detection, OnlinePlayer, Page, Player, Replay } from '../lib/types';
 import { useToast } from '../lib/toast';
 import { PageHeader } from '../components/Layout';
 import { Badge, ConfirmReason, Empty, ErrorState, Loading, Pagination, RiskBar, StatTile, Tabs } from '../components/ui';
 import { BanCreateModal, BanDetail, BanTable } from './Bans';
 import { DetectionDetail, DetectionTable } from './Detections';
+import { ReplayModal, ReplayTable, RequestReplayButton } from './Replays';
 
 function KickModal({ playerId, name, onClose }: { playerId: string; name: string; onClose: () => void }) {
   const server = useServer();
@@ -98,6 +99,7 @@ interface Profile {
   bans: Ban[];
   stats: { total: number; high: number; false_positives: number };
   online: { net_id: number } | null;
+  replays: Replay[];
 }
 
 export function PlayerProfilePage() {
@@ -111,6 +113,7 @@ export function PlayerProfilePage() {
   const [modal, setModal] = useState<'kick' | 'ban' | null>(null);
   const [det, setDet] = useState<Detection | null>(null);
   const [banOpen, setBanOpen] = useState<string | null>(null);
+  const [replay, setReplay] = useState<Replay | null>(null);
   useEffect(() => { if (q.data) setNotes(q.data.player.notes); }, [q.data]);
   const saveNotes = useMutation({
     mutationFn: () => api('PATCH', `/servers/${server.id}/players/${playerId}`, { notes }),
@@ -126,6 +129,7 @@ export function PlayerProfilePage() {
         title={d.player.last_name || '(névtelen játékos)'}
         subtitle={<>{d.online ? <Badge tone="ok">online · #{d.online.net_id}</Badge> : <span className="muted">offline · utoljára {fmtRelative(d.player.last_seen)}</span>} <span className="muted">· első látogatás {fmtDate(d.player.first_seen)}</span></>}
         actions={<>
+          {d.online && can('replays.request') && <RequestReplayButton playerId={d.player.id} name={d.player.last_name} />}
           {d.online && can('players.kick') && <button className="btn" onClick={() => setModal('kick')}>Kick</button>}
           {can('bans.create') && <button className="btn danger" onClick={() => setModal('ban')}>Ban</button>}
         </>}
@@ -160,6 +164,12 @@ export function PlayerProfilePage() {
           {d.bans.length ? <BanTable items={d.bans.map((b) => ({ ...b, identifiers: b.identifiers ?? [] }))} onOpen={(b) => setBanOpen(b.id)} /> : <Empty title="Nincs ban" />}
         </section>
       )}
+      {can('replays.view') && d.replays.length > 0 && (
+        <section className="card flush">
+          <h2 className="pad">POV visszajátszások</h2>
+          <ReplayTable items={d.replays} onOpen={setReplay} showPlayer={false} />
+        </section>
+      )}
       <section className="card flush">
         <h2 className="pad">Munkamenetek</h2>
         <div className="table-wrap"><table>
@@ -171,6 +181,7 @@ export function PlayerProfilePage() {
       {modal === 'ban' && <BanCreateModal playerId={d.player.id} playerName={d.player.last_name} detectionIds={d.detections.filter((x) => x.review_status === 'confirmed').map((x) => x.id).slice(0, 50)} onClose={() => setModal(null)} />}
       {det && <DetectionDetail d={det} onClose={() => setDet(null)} />}
       {banOpen && <BanDetail banId={banOpen} onClose={() => setBanOpen(null)} />}
+      {replay && <ReplayModal replay={replay} onClose={() => setReplay(null)} />}
     </>
   );
 }

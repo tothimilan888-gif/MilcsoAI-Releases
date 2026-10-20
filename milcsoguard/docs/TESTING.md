@@ -8,8 +8,9 @@
 |---|---|---|
 | Backend (Vitest + valódi PostgreSQL) | `cd backend && npm test` | auth, CSRF, munkamenet-lejárat, 2FA, jelszócsere, lockout, rate limit, RBAC, eszkalációvédelem, több szerver adatszétválasztása, API-kulcs (visszavonás, rotáció), ban / unban / lejárat / ban-kijátszás, idempotens detektálás, hibás kérések, konfiguráció-validáció, parancssor, heartbeat, retention, adatbázis-kiesés, SSE |
 | Lua unit + integráció (FXServer mock) | `cd tests/lua && ./run.sh` | risk engine és védőkorlátok, sémavalidáció, mozgáselemzés (legitim mozgás, esés, respawn, lag, attach), sebzés/robbanás/entity szabályok, csatlakozási ban (backend nélkül is), KVP perzisztencia, admin panel jogosultságok, hamis heartbeat, event spam, honeypot, távoli konfiguráció elutasítása, kimenő sor |
-| Lua ↔ élő backend (szerződésteszt) | `MG_CONTRACT_URL=http://127.0.0.1:8080 MG_CONTRACT_KEY=mgk_… ./run.sh` | a valódi resource a valódi backenddel: handshake/séma, munkamenetek, detektálások, in-game ban/unban, távoli konfiguráció |
-| NUI panel (headless Chromium) | `cd tests/e2e && npm ci && npm run nui` | mind a 10 oldal, XSS, indoklás kötelező, végleges ban explicit, jogosultság szerinti menü |
+| Lua ↔ élő backend (szerződésteszt) | `MG_CONTRACT_URL=http://127.0.0.1:8080 MG_CONTRACT_KEY=mgk_… ./run.sh` | a valódi resource a valódi backenddel: handshake/séma, munkamenetek, detektálások, in-game ban/unban, **ban + visszajátszás bájtpontos feltöltése**, távoli konfiguráció |
+| NUI panel (headless Chromium) | `cd tests/e2e && npm ci && npm run nui` | mind a 11 oldal, XSS, indoklás kötelező, végleges ban explicit, jogosultság szerinti menü; **a felvevő valódi MediaRecorderrel** (darabolás, ring buffer, csomagolás, WebM fejléc), az in-game lejátszó, spectate/teleport/fagyasztás/üzenet, offline ban |
+| Web visszajátszás e2e | `MG_OWNER_PASSWORD=… MG_KEY=mgk_… [MG_VIEWER=… MG_VIEWER_PASSWORD=…] node web-replay.test.mjs` | valódi WebM feltöltése a game API-n, lejátszás a dashboardon (CSP), banhoz kötés, kérés a profilról → parancs, audit, viewer 403 |
 | Web dashboard e2e | `MG_OWNER_PASSWORD=… MG_KEY=mgk_… npm run web` (futó backend + build) | belépés, SSE élő frissítés, minden oldal, ban/unban → játék oldali hatás, whitelist, konfiguráció, API-kulcs visszavonás, adminfelvétel, mobil nézet, kijelentkezés |
 | Web unit | `cd web && npm test` | konfiguráció diff, query string |
 
@@ -44,6 +45,14 @@ Használj **saját teszt resource-ot** (ne cheat-szoftvert), ami a vizsgált vis
 - [ ] A MilcsoGuard kliens leállítása (`stop` egy kliensoldali tesztben nem lehetséges; a heartbeat-et egy teszt resource blokkolásával lehet szimulálni) → `client.heartbeat`.
 - [ ] Csapda event (`Config.Modules['events.honeypot']`) triggerelése → ban (circuit breaker figyelembevételével).
 - [ ] Ellenőrizd minden esetben: dashboard élő lista, Discord riasztás, auditnapló, és hogy kliensoldali jel **nem** okozott bant.
+
+### POV visszajátszás és admin eszközök (élő szerveren, először ezt!)
+- [ ] Panel → Játékosok → saját magad → *Felvevő: fut*. Ha „nem támogatott” vagy „nem jelentkezett”: F8 konzol, `nui_devtools`, hiba a `replay.js`-ben?
+- [ ] Owner-ként *Visszajátszás kérése* saját magadról → pár mp múlva Visszajátszások → **a valódi játékkép látszik?** (headless tesztben ez nem ellenőrizhető)
+- [ ] Ban egy második fiókra (1 órás) → a fiók ~2-10 mp múlva esik le, a ban részleteinél ott a felvétel, utána feloldás.
+- [ ] Spectate → Backspace kilépés → visszakerülsz az eredeti helyre és bucketbe, nem kapsz teleport/láthatatlanság detektálást.
+- [ ] Odamegyek / Idehozom / Fagyasztás egy másik játékoson: nincs téves `movement.teleport`.
+- [ ] FPS-mérés a felvevővel és nélküle (`Config.Replay.enabled = false`).
 
 ### Adminműveletek
 - [ ] Moderátor: időszakos ban igen, végleges ban nem (panelen és weben is).

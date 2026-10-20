@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "nui": "node nui.test.mjs",
+    "nui": "node nui.test.mjs && node nui-replay.test.mjs",
     "web": "node web.test.mjs"
   },
   "devDependencies": {
