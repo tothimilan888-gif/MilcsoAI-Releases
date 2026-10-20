@@ -79,3 +79,20 @@ describe('config schema validation', () => {
     expect(validateOverrides(schema, { modules: { 'weapons.blacklist': { params: { weapons: ['A', 'B', 'C', 'D'] } } } }).ok).toBe(false);
   });
 });
+
+describe('APP_ENCRYPTION_KEY formats', () => {
+  const env = (key: string) => ({ DATABASE_URL: 'postgres://x', APP_ENCRYPTION_KEY: key });
+  it('accepts base64 and hex 32-byte keys and normalises them', async () => {
+    const { loadConfig } = await import('../src/config.js');
+    const raw = Buffer.alloc(32, 9);
+    expect(loadConfig(env(raw.toString('base64'))).APP_ENCRYPTION_KEY).toBe(raw.toString('base64'));
+    expect(loadConfig(env(raw.toString('hex'))).APP_ENCRYPTION_KEY).toBe(raw.toString('base64'));
+    expect(loadConfig(env(`  ${raw.toString('base64')}\n`)).APP_ENCRYPTION_KEY).toBe(raw.toString('base64'));
+  });
+  it('rejects anything else with a helpful message', async () => {
+    const { loadConfig } = await import('../src/config.js');
+    expect(() => loadConfig(env('my-secret-key'))).toThrow(/32 bytes.*Got 13 characters/);
+    expect(() => loadConfig(env(Buffer.alloc(16).toString('base64')))).toThrow(/32 bytes/);
+    expect(() => loadConfig(env('<generated>'))).toThrow(/32 bytes/);
+  });
+});

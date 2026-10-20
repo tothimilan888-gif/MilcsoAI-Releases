@@ -65,7 +65,8 @@ Indítás után a dashboard *Rendszerállapot* oldalán a játékszerver „onli
 | Tünet | Ok |
 |---|---|
 | Build hiba `npm ci` | a `web/` és `backend/` `package-lock.json` hiányzik / nem commitolt |
-| Indulás: `Invalid environment configuration` | hiányzó vagy hibás változó – a log mezőnként megmondja; `APP_ENCRYPTION_KEY` pontosan 32 bájt base64 legyen (`openssl rand -base64 32`) |
+| Indulás: `APP_ENCRYPTION_KEY must decode to exactly 32 bytes` | A kulcs nem 32 bájtos. Érvényes: `openssl rand -base64 32` vagy `openssl rand -hex 32` kimenete (Windows PowerShell 7: `[Convert]::ToBase64String([Security.Cryptography.RandomNumberGenerator]::GetBytes(32))`). Nem lehet kitalált szöveg, és ne legyen előtte/utána szóköz vagy idézőjel. A Renderen a változó megadásakor használhatod a **Generate** gombot is, ha van. |
+| Indulás: `Invalid environment configuration` | hiányzó vagy hibás változó – a log mezőnként megmondja |
 | `Game API requires HTTPS` | a kérés nem a Render proxyján át érkezett, vagy `TRUST_PROXY` nincs `true`-ra állítva |
 | A dashboard betölt, de belépés után kidob | `COOKIE_SECURE=true` mellett csak HTTPS-en működik – használd a `https://` URL-t |
 | Az első deploy után nincs owner | a `BOOTSTRAP_OWNER_*` mindhárom változó kell, erős jelszóval; a log `bootstrap owner skipped: ...` sora megmondja az okot |
