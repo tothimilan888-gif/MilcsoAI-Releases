@@ -7,7 +7,7 @@ import { forbidden, notFound, unprocessable } from '../lib/errors.js';
 import { formatIdentifier, normaliseIdentifiers, type Identifier } from '../lib/identifiers.js';
 import { isPermission, type Permission } from '../lib/permissions.js';
 import { publish } from '../lib/realtime.js';
-import { parse } from '../lib/validate.js';
+import { emptyArrayAsObject, parse } from '../lib/validate.js';
 import { BAN_COLUMNS, banIdentifiers, createBan, findActiveBan, revokeBan, type BanRow } from '../services/bans.js';
 import { takePendingCommands } from '../services/commands.js';
 import { DETECTION_COLUMNS, detectionInput, detectionListQuery, ingestDetections, listDetections, reviewDetection, type DetectionRow } from '../services/detections.js';
@@ -80,9 +80,9 @@ const handshakeBody = z.object({
   artifact: z.string().max(200).default(''),
   framework: z.string().max(32).default('standalone'),
   onesync: z.string().max(32).default(''),
-  dependencies: z.record(z.string().max(64), z.string().max(32)).default({}),
+  dependencies: z.preprocess(emptyArrayAsObject, z.record(z.string().max(64), z.string().max(32))).default({}),
   schema: z.unknown(),
-  effective: z.record(z.string(), z.unknown()).refine((e) => JSON.stringify(e).length <= 200_000, 'effective config too large').default({}),
+  effective: z.preprocess(emptyArrayAsObject, z.record(z.string(), z.unknown())).refine((e) => JSON.stringify(e).length <= 200_000, 'effective config too large').default({}),
 });
 
 const playerSchema = z.object({
@@ -97,7 +97,7 @@ const playerSchema = z.object({
 const heartbeatBody = z.object({
   players: z.array(playerSchema).max(2048),
   resources: z.array(z.object({ name: z.string().max(64), state: z.string().max(16) })).max(200).default([]),
-  stats: z.record(z.string().max(40), z.union([z.number(), z.string().max(100), z.boolean()])).default({}),
+  stats: z.preprocess(emptyArrayAsObject, z.record(z.string().max(40), z.union([z.number(), z.string().max(100), z.boolean()]))).default({}),
   configVersion: z.number().int().min(0).default(0),
   queueSize: z.number().int().min(0).default(0),
   uptimeSeconds: z.number().int().min(0).default(0),
@@ -379,7 +379,7 @@ export default async function gameRoutes(app: FastifyInstance) {
           type: z.string().regex(/^[a-z_]{2,40}$/),
           severity: z.enum(['INFO', 'LOW', 'MEDIUM', 'HIGH', 'CRITICAL']),
           message: z.string().max(500),
-          data: z.record(z.string(), z.unknown()).refine((d) => JSON.stringify(d).length < 4000).default({}),
+          data: z.preprocess(emptyArrayAsObject, z.record(z.string(), z.unknown())).refine((d) => JSON.stringify(d).length < 4000).default({}),
         })).min(1).max(50),
       }),
       req.body,
@@ -446,6 +446,22 @@ export default async function gameRoutes(app: FastifyInstance) {
   });
 
   app.get('/admin/audit', async (req) => listAudit(app, req.game!.serverId, parse(auditQuery, req.query)));
+
+  // In-game admin actions that have no dedicated endpoint (kick, monitor) are audited here.
+  app.post('/admin/audit', async (req) => {
+    const body = parse(
+      z.object({
+        action: z.enum(['player.kick', 'player.monitor', 'panel.open']),
+        details: z.preprocess(emptyArrayAsObject, z.record(z.string(), z.unknown())).refine((d) => JSON.stringify(d).length < 4000).default({}),
+        actor: actorSchema,
+      }),
+      req.body,
+    );
+    const perm: Record<string, Permission | null> = { 'player.kick': 'players.kick', 'player.monitor': 'detections.review', 'panel.open': null };
+    const actor = await gameActor(app, req, body.actor, perm[body.action] ?? null);
+    await audit(app.db, actor, { serverId: req.game!.serverId, action: `ingame.${body.action}`, targetType: 'player', details: body.details });
+    return { ok: true };
+  });
 
   app.get('/admin/whitelist', async (req) => ({ items: await activeWhitelist(app.db, req.game!.serverId) }));
 

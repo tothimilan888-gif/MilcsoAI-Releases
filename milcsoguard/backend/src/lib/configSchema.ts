@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { emptyArrayAsObject } from './validate.js';
 
 /**
  * The FiveM resource is the single source of truth for which settings exist. It reports a schema
@@ -33,15 +34,15 @@ const moduleSpec = z.object({
     action: z.string().max(16),
     severity: z.string().max(16),
   }),
-  params: z.record(z.string().regex(/^[a-zA-Z][a-zA-Z0-9_]{0,40}$/), paramSpec).default({}),
+  params: z.preprocess(emptyArrayAsObject, z.record(z.string().regex(/^[a-zA-Z][a-zA-Z0-9_]{0,40}$/), paramSpec)).default({}),
 });
 
 export const configSchemaDescriptor = z.object({
   version: z.number().int().min(1),
   actions: z.array(z.string().max(16)).min(1).max(10),
   severities: z.array(z.string().max(16)).min(1).max(10),
-  modules: z.record(z.string().regex(/^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)?$/), moduleSpec).refine((m) => Object.keys(m).length <= 200, 'too many modules'),
-  risk: z.record(z.string().regex(/^[a-zA-Z][a-zA-Z0-9_]{0,40}$/), paramSpec).default({}),
+  modules: z.preprocess(emptyArrayAsObject, z.record(z.string().regex(/^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)?$/), moduleSpec)).refine((m) => Object.keys(m).length <= 200, 'too many modules'),
+  risk: z.preprocess(emptyArrayAsObject, z.record(z.string().regex(/^[a-zA-Z][a-zA-Z0-9_]{0,40}$/), paramSpec)).default({}),
 });
 export type ConfigSchemaDescriptor = z.infer<typeof configSchemaDescriptor>;
 
@@ -90,8 +91,11 @@ function checkParam(spec: ParamSpec, value: unknown, path: string, issues: Valid
 /** Validates overrides against the schema. Unknown keys are errors (never silently ignored). */
 export function validateOverrides(schema: ConfigSchemaDescriptor, raw: unknown): { ok: true; value: ConfigOverrides } | { ok: false; issues: ValidationIssue[] } {
   const issues: ValidationIssue[] = [];
+  raw = emptyArrayAsObject(raw);
   if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return { ok: false, issues: [{ path: '', message: 'must be an object' }] };
-  const obj = raw as Record<string, unknown>;
+  const obj = { ...(raw as Record<string, unknown>) };
+  if (obj.modules !== undefined) obj.modules = emptyArrayAsObject(obj.modules);
+  if (obj.risk !== undefined) obj.risk = emptyArrayAsObject(obj.risk);
   for (const k of Object.keys(obj)) if (k !== 'modules' && k !== 'risk') issues.push({ path: k, message: 'unknown key' });
 
   const out: ConfigOverrides = {};
@@ -107,11 +111,12 @@ export function validateOverrides(schema: ConfigSchemaDescriptor, raw: unknown):
           issues.push({ path: base, message: 'unknown module' });
           continue;
         }
-        if (typeof ov !== 'object' || ov === null || Array.isArray(ov)) {
+        if (typeof ov !== 'object' || ov === null || (Array.isArray(ov) && ov.length > 0)) {
           issues.push({ path: base, message: 'must be an object' });
           continue;
         }
-        const o = ov as Record<string, unknown>;
+        const o = { ...(ov as Record<string, unknown>) };
+        if (o.params !== undefined) o.params = emptyArrayAsObject(o.params);
         const clean: ModuleOverride = {};
         for (const k of Object.keys(o)) {
           if (!['enabled', 'action', 'severity', 'params'].includes(k)) issues.push({ path: `${base}.${k}`, message: 'unknown key' });

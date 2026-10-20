@@ -8,6 +8,7 @@ import { notFound } from '../lib/errors.js';
 import { normaliseIdentifiers } from '../lib/identifiers.js';
 import { Where, type Page } from '../lib/pagination.js';
 import { publish } from '../lib/realtime.js';
+import { emptyArrayAsObject } from '../lib/validate.js';
 import { resolvePlayer } from './players.js';
 
 export const detectionInput = z.object({
@@ -23,7 +24,7 @@ export const detectionInput = z.object({
   playerName: z.string().max(64).default(''),
   identifiers: z.array(z.string().max(100)).max(32).default([]),
   // Evidence is free-form but bounded; it is rendered as JSON (never as HTML) in the UIs.
-  evidence: z.record(z.string(), z.unknown()).refine((e) => JSON.stringify(e).length <= 16_000, 'evidence too large').default({}),
+  evidence: z.preprocess(emptyArrayAsObject, z.record(z.string(), z.unknown())).refine((e) => JSON.stringify(e).length <= 16_000, 'evidence too large').default({}),
   occurredAt: z.coerce.date(),
 });
 export type DetectionInput = z.infer<typeof detectionInput>;

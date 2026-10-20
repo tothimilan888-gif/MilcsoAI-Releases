@@ -11,3 +11,8 @@ export function parse<T extends z.ZodType>(schema: T, value: unknown): z.infer<T
   }
   return r.data;
 }
+
+/** FiveM's dkjson encodes empty Lua tables as []. Accept that wherever an object is expected. */
+export function emptyArrayAsObject(v: unknown): unknown {
+  return Array.isArray(v) && v.length === 0 ? {} : v;
+}
