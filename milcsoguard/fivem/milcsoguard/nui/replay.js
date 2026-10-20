@@ -22,6 +22,8 @@
 
   const RESOURCE = typeof GetParentResourceName === 'function' ? GetParentResourceName() : 'milcsoguard';
   const CHUNK_CHARS = 240 * 1024;
+  // Shown on the admin panel's player page, so you can tell which recorder a client really runs.
+  const RECORDER_VERSION = '1.1.2';
   const R = { cfg: null, gl: null, canvas: null, stream: null, recorder: null, mime: null, segments: [], current: null, rotateTimer: 0, raf: 0, lastDraw: 0, state: 'idle', capturing: false };
 
   function post(endpoint, body) {
@@ -50,7 +52,7 @@
     return s;
   }
 
-  function setupGameView(width, height) {
+  function setupGameView(width, height, flipY) {
     const canvas = document.createElement('canvas');
     canvas.width = width;
     canvas.height = height;
@@ -62,7 +64,7 @@
     if (!gl) throw new Error('WebGL unavailable');
 
     const program = gl.createProgram();
-    gl.attachShader(program, compile(gl, gl.VERTEX_SHADER, 'attribute vec2 a_pos; varying vec2 v_uv; void main() { v_uv = vec2((a_pos.x + 1.0) * 0.5, (a_pos.y + 1.0) * 0.5); gl_Position = vec4(a_pos, 0.0, 1.0); }'));
+    gl.attachShader(program, compile(gl, gl.VERTEX_SHADER, 'attribute vec2 a_pos; uniform float u_flip; varying vec2 v_uv; void main() { float v = (a_pos.y + 1.0) * 0.5; v_uv = vec2((a_pos.x + 1.0) * 0.5, u_flip > 0.5 ? 1.0 - v : v); gl_Position = vec4(a_pos, 0.0, 1.0); }'));
     gl.attachShader(program, compile(gl, gl.FRAGMENT_SHADER, 'precision mediump float; varying vec2 v_uv; uniform sampler2D u_tex; void main() { gl_FragColor = vec4(texture2D(u_tex, v_uv).rgb, 1.0); }'));
     gl.linkProgram(program);
     if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error('program: ' + gl.getProgramInfoLog(program));
@@ -94,6 +96,8 @@
     gl.texParameterf(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.MIRRORED_REPEAT);
     gl.texParameterf(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
     gl.uniform1i(gl.getUniformLocation(program, 'u_tex'), 0);
+    // Config.Replay.flipY: escape hatch if a FiveM build hands the texture over the other way round.
+    gl.uniform1f(gl.getUniformLocation(program, 'u_flip'), flipY ? 1 : 0);
     gl.viewport(0, 0, width, height);
 
     R.canvas = canvas;
@@ -152,12 +156,12 @@
     try {
       R.mime = pickMime();
       if (!R.mime || !HTMLCanvasElement.prototype.captureStream) return report('unsupported', 'MediaRecorder/captureStream missing');
-      setupGameView(cfg.width, cfg.height);
+      setupGameView(cfg.width, cfg.height, cfg.flipY === true);
       R.raf = requestAnimationFrame(draw);
       R.stream = R.canvas.captureStream(cfg.fps);
       R.current = startSegment();
       R.rotateTimer = setInterval(() => { rotate().catch(() => undefined); }, cfg.segmentSeconds * 1000);
-      report('recording', `${cfg.width}x${cfg.height}@${cfg.fps} ${R.mime}`);
+      report('recording', `v${RECORDER_VERSION} ${cfg.width}x${cfg.height}@${cfg.fps}${cfg.flipY ? ' flipY' : ''} ${R.mime}`);
     } catch (e) {
       report('error', e && e.message);
     }

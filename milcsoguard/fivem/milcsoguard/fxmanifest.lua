@@ -5,7 +5,7 @@ lua54 'yes'
 name 'milcsoguard'
 author 'MilcsoGuard'
 description 'MilcsoGuard – server-authoritative anticheat with in-game admin panel'
-version '1.1.1'
+version '1.1.2'
 repository 'https://github.com/tothimilan888-gif/MilcsoAI-Releases'
 
 -- Nothing in server_scripts (config, API key handling) is ever sent to clients.

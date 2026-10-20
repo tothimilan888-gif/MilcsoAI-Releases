@@ -23,7 +23,7 @@ function Replay.clientConfig()
     local c = Config.Replay
     return {
         seconds = c.seconds, segmentSeconds = c.segmentSeconds, width = c.width, height = c.height,
-        fps = c.fps, bitrateKbps = c.bitrateKbps, uploadBps = c.uploadBps,
+        fps = c.fps, bitrateKbps = c.bitrateKbps, uploadBps = c.uploadBps, flipY = c.flipY == true,
     }
 end
 

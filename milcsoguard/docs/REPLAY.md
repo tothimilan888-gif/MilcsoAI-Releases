@@ -29,6 +29,12 @@ darabok base64-ben, 240 KB-os csomagokban ─►  ellenőrzi: csak attól a ját
 * **Teljesítmény a kliensen:** másodpercenként 15 kis WebGL rajzolás és szoftveres VP8 kódolás 480p-ben. Ez egy átlagos gépen pár százalék CPU, gyenge gépen érezhető lehet. Ha gond van, csökkentsd: `fps = 10`, `width = 640, height = 360`, vagy kapcsold ki (`enabled = false`).
 * **Adatvédelem:** a játékosok képernyőjéről (a játékról) készül felvétel. Írd bele a szerver szabályzatába vagy az adatkezelési tájékoztatóba, és állítsd be a megőrzési időt (Szerver → adatmegőrzés, `replaysDays`, alapból 30 nap). A megnyitás és a kérés auditnaplóba kerül (`replay.view`, `replay.request`).
 
+## Ha a felvétel fejjel lefelé áll
+
+1. Nézd meg, melyik felvevő fut a kliensen: Panel → Játékosok → játékos → **Felvevő** sor, pl. `v1.1.2 854x480@15 …`. Ha nincs verziószám, a kliens még a régi felvevőt futtatja: `restart milcsoguard`, majd lépj ki és csatlakozz újra.
+2. A tájolás **felvételkor** dől el, a játékos gépén. Az 1.1.0-val készült felvételek fejjel lefelé maradnak; ezeket a lejátszó **Kép fordítása** gombjával lehet nézni (csak a megjelenítést fordítja).
+3. Ha egy friss, `v1.1.2`-es felvevővel készült felvétel is fejjel lefelé áll: `Config.Replay.flipY = true`, `restart milcsoguard`, újracsatlakozás. Ilyenkor jelezd a FiveM build számát is.
+
 ## Beállítások (`config/config.lua` → `Config.Replay`)
 
 | Kulcs | Alap | Leírás |
@@ -38,6 +44,7 @@ darabok base64-ben, 240 KB-os csomagokban ─►  ellenőrzi: csak attól a ját
 | `segmentSeconds` | 5 | Ilyen hosszú darabokra vág (ennyivel lehet hosszabb a felvétel) |
 | `width` / `height` / `fps` | 854 / 480 / 15 | Felbontás és képkockaszám |
 | `bitrateKbps` | 700 | Videó bitráta |
+| `flipY` | `false` | Függőleges fordítás felvételkor (csak ha az új felvételek fejjel lefelé állnak) |
 | `onBan` | `true` | Ban előtt bekéri a felvételt |
 | `isolateOnBan` | `true` | Saját routing bucket + fagyasztás a feltöltés alatt |
 | `uploadTimeoutSeconds` | 25 | Ennyi idő után a bannolt játékos mindenképp lecsatlakozik |

@@ -88,6 +88,7 @@ Config.Replay = {
     seconds = 15,            -- at least this much video before the moment of capture
     segmentSeconds = 5,      -- recorder restarts this often (each part is a standalone WebM)
     width = 854, height = 480, fps = 15,
+    flipY = false,           -- true only if NEW recordings are upside down (then tell us your FiveM build)
     bitrateKbps = 700,       -- ~1.3 MB per 15 s
     onBan = true,            -- capture before a banned player is dropped
     isolateOnBan = true,     -- private routing bucket + freeze while the replay uploads

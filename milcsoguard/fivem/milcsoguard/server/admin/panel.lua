@@ -65,7 +65,7 @@ local function playerSummary(p, admin)
     return {
         id = p.src, name = p.name, ping = GetPlayerPing(p.src), risk = MG.Detections.score(p),
         monitored = (p.monitoredUntil or 0) > MG.State.now(), frozen = p.frozen == true,
-        recorder = p.replayState or 'unknown',
+        recorder = p.replayState or 'unknown', recorderDetail = p.replayDetail,
         admin = p.admin and { role = p.admin.label, level = p.admin.level, source = p.admin.source } or nil,
         identifiers = maskIds(U.filterIdentifiers(p.identifiers, { token = true, ip = not full }), full),
         joinedSecondsAgo = math.floor((MG.State.now() - p.joinedAt) / 1000),

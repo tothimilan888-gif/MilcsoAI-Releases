@@ -46,6 +46,7 @@ export function ReplayPlayer({ replay }: { replay: Replay }) {
   const [urls, setUrls] = useState<(string | null)[]>([]);
   const [current, setCurrent] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [flipped, setFlipped] = useState(false);
   const video = useRef<HTMLVideoElement>(null);
   const parts = meta.data?.parts ?? [];
 
@@ -86,7 +87,7 @@ export function ReplayPlayer({ replay }: { replay: Replay }) {
   return (
     <div className="replay">
       <div className="video-wrap">
-        <video ref={video} controls muted playsInline onEnded={(e) => { if (!e.currentTarget.dataset.fixing) setCurrent((c) => (c + 1 < parts.length ? c + 1 : c)); }} aria-label={`Visszajátszás: ${replay.player_name}`} />
+        <video ref={video} className={flipped ? 'flipped' : undefined} controls muted playsInline onEnded={(e) => { if (!e.currentTarget.dataset.fixing) setCurrent((c) => (c + 1 < parts.length ? c + 1 : c)); }} aria-label={`Visszajátszás: ${replay.player_name}`} />
         {!urls[current] && !error && <div className="video-status">Betöltés…</div>}
         {error && <div className="video-status">{error}</div>}
       </div>
@@ -98,6 +99,7 @@ export function ReplayPlayer({ replay }: { replay: Replay }) {
             </button>
           ))}
         </div>
+        <button className="btn sm" onClick={() => setFlipped((f) => !f)} aria-pressed={flipped} title="Csak a megjelenítést fordítja (régi, fejjel lefelé rögzített felvételekhez)">Kép fordítása</button>
         <span className="muted small nowrap">{fmtSecs(total)} · {replay.width}×{replay.height} @ {replay.fps} fps · {fmtSize(replay.size_bytes)}</span>
       </div>
       <p className="muted small">A sáv jobb széle a {replay.kind === 'ban' ? 'ban' : 'kérés'} pillanata. A felvétel a játékos saját kliensén készült: egy csaló manipulálhatja vagy blokkolhatja, ezért a detektálásokkal együtt értékeld.</p>

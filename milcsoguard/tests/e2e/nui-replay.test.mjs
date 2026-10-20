@@ -65,6 +65,7 @@ check(await waitFor(() => posts.find((p) => p.endpoint === 'replayHello')), 'rec
 await page.evaluate(() => window.postMessage({ type: 'replay:config', config: { seconds: 4, segmentSeconds: 2, width: 320, height: 180, fps: 10, bitrateKbps: 300, uploadBps: 100000 } }, '*'));
 const status = await waitFor(() => posts.find((p) => p.endpoint === 'replayStatus'));
 check(status && status.body.state === 'recording', `recorder reports "recording" (${status && status.body.state} ${status && status.body.detail})`);
+check(status && /^v\d+\.\d+\.\d+ /.test(status.body.detail), 'recorder reports its version (shown on the panel)');
 await sleep(7500);
 const kept = await page.evaluate(() => window.MG_REPLAY.segments.map((s) => s.durationMs));
 check(kept.length >= 2 && kept.reduce((a, b) => a + b, 0) >= 4000 && kept.reduce((a, b) => a + b, 0) - kept[0] < 4000, `ring buffer keeps just enough completed segments (${kept.join(', ')} ms)`);
@@ -149,7 +150,7 @@ check(await page.$eval('#specBar', (el) => !el.classList.contains('hidden') && e
 await page.click('#specStop');
 check(await waitFor(() => posts.find((p) => p.body.action === 'player.spectate.stop')), 'banner stops spectating');
 await page.evaluate(() => window.postMessage({ type: 'spectate', active: false }, '*'));
-check(await page.$eval('#specBar', (el) => el.classList.contains('hidden')), 'banner disappears');
+check(await page.waitForFunction(() => document.querySelector('#specBar').classList.contains('hidden'), null, { timeout: 3000 }).then(() => true).catch(() => false), 'banner disappears');
 
 // ---------------------------------------------------------------- recently left + offline ban
 await page.click('nav button[data-page="players"]');

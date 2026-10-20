@@ -327,7 +327,7 @@
         <div class="card"><h2>${p.name} · #${p.id}</h2>
           <dl class="kv"><dt>Kockázat</dt><dd>${risk(p.risk)}</dd><dt>Ping</dt><dd>${p.ping} ms</dd>
           <dt>Megfigyelt</dt><dd>${p.monitored ? 'igen' : 'nem'}${p.frozen ? html` <span class="badge sev-MEDIUM">fagyasztva</span>` : ''}</dd>
-          <dt>Felvevő</dt><dd>${RECORDER_LABEL[p.recorder] || p.recorder}</dd><dt>Admin</dt><dd>${p.admin ? `${p.admin.role} (${p.admin.source})` : '–'}</dd>
+          <dt>Felvevő</dt><dd>${RECORDER_LABEL[p.recorder] || p.recorder}${p.recorderDetail ? html`<div class="muted small mono">${p.recorderDetail}</div>` : ''}</dd><dt>Admin</dt><dd>${p.admin ? `${p.admin.role} (${p.admin.source})` : '–'}</dd>
           <dt>Azonosítók</dt><dd class="mono">${(p.identifiers || []).map((i) => html`<div>${i}</div>`)}</dd>
           ${rd.player ? html`<dt>Első látogatás</dt><dd>${fmtTime(rd.player.first_seen)}</dd><dt>Jegyzet</dt><dd>${rd.player.notes || '–'}</dd>` : ''}</dl>
         </div>
@@ -496,11 +496,12 @@
       <h3>Visszajátszás – ${rep.player_name || '?'}</h3>
       <div class="muted small">${rep.kind === 'ban' ? 'Ban előtti felvétel' : 'Kézi kérés'} · ${fmtTime(rep.created_at)} · ${Math.round((rep.duration_ms || 0) / 1000)} mp · ${rep.reason}</div>
       <div class="video-wrap"><video id="rv" controls muted playsinline></video><div id="rvStatus" class="video-status">Betöltés…</div></div>
-      <div class="row"><span class="muted small" id="rvPart" style="margin-right:auto"></span><button class="btn" id="rvRestart">Elejétől</button><button class="btn primary" id="rvClose">Bezárás</button></div>
+      <div class="row"><span class="muted small" id="rvPart" style="margin-right:auto"></span><button class="btn" id="rvFlip" title="Csak a megjelenítést fordítja (régi, fejjel lefelé rögzített felvételekhez)">Kép fordítása</button><button class="btn" id="rvRestart">Elejétől</button><button class="btn primary" id="rvClose">Bezárás</button></div>
     </div>`);
     m.classList.remove('hidden');
     $('#rv').onended = (e) => { if (!e.target.dataset.fixing && player.current + 1 < player.total) playPart(player.current + 1); };
     $('#rvRestart').onclick = () => playPart(0);
+    $('#rvFlip').onclick = () => $('#rv').classList.toggle('flipped');
     $('#rvClose').onclick = () => { m.classList.add('hidden'); m.innerHTML = ''; stopPlayer(); };
     playPart(0);
   }
