@@ -76,7 +76,8 @@ Lásd `backend/.env.example` (minden változó induláskor validálva; hiányzó
 | `CORS_ORIGINS` | Csak ha a dashboard másik originen fut |
 | `TRUST_PROXY`, `COOKIE_SECURE` | Reverse proxy mögött `true` |
 | `SESSION_IDLE_MINUTES`, `SESSION_ABSOLUTE_HOURS` | Munkamenet lejárat |
-| `RATE_LIMIT_PER_MINUTE`, `LOGIN_RATE_LIMIT`, `LOGIN_MAX_ATTEMPTS`, `LOGIN_LOCK_MINUTES` | Rate limit és zárolás |
+| `RATE_LIMIT_PER_MINUTE`, `LOGIN_RATE_LIMIT` | Rate limit (alap: 300/perc, 10/5 perc belépésre IP-nként) |
+| `LOGIN_MAX_ATTEMPTS`, `LOGIN_LOCK_MINUTES` | Fiókzárolás: 3 hibás jelszó után 5 percre zárolódik a fiók (alap: 3 / 5 perc) |
 | `RETENTION_JOB_MINUTES` | Karbantartó job gyakorisága |
 | `GAME_HEARTBEAT_STALE_SECONDS` | Ennyi heartbeat nélkül a szerver offline |
 | `BOOTSTRAP_OWNER_EMAIL/_USERNAME/_PASSWORD` | Az első platform owner létrehozása shell nélküli hostokon (Render). Csak akkor hat, ha még nincs owner; első belépéskor jelszócsere kötelező; utána töröld őket |

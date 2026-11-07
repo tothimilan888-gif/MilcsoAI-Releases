@@ -41,8 +41,8 @@ const EnvSchema = z.object({
   RATE_LIMIT_PER_MINUTE: z.coerce.number().int().min(10).default(300),
   // Per-IP limit for login / MFA / password endpoints within 5 minutes.
   LOGIN_RATE_LIMIT: z.coerce.number().int().min(1).default(10),
-  LOGIN_MAX_ATTEMPTS: z.coerce.number().int().min(3).max(50).default(8),
-  LOGIN_LOCK_MINUTES: z.coerce.number().int().min(1).max(24 * 60).default(15),
+  LOGIN_MAX_ATTEMPTS: z.coerce.number().int().min(3).max(50).default(3),
+  LOGIN_LOCK_MINUTES: z.coerce.number().int().min(1).max(24 * 60).default(5),
   RETENTION_JOB_MINUTES: z.coerce.number().int().min(1).default(60),
   GAME_HEARTBEAT_STALE_SECONDS: z.coerce.number().int().min(30).default(120),
   // Per-server storage for POV replays (PostgreSQL). Oldest replays not tied to an active ban are evicted first.
