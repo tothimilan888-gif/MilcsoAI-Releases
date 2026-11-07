@@ -13,6 +13,7 @@
     "migrate:down": "tsx src/db/migrate.ts down",
     "migrate:prod": "node dist/src/db/migrate.js up",
     "create-owner": "tsx scripts/create-owner.ts",
+    "set-password": "tsx scripts/set-password.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },
