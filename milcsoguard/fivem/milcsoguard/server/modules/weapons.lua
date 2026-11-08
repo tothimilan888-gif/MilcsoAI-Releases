@@ -118,7 +118,47 @@ function W.evaluateDamage(data, ctx, params)
     return out
 end
 
+--[[
+  Pure rapid-fire evaluation (unit tested). state = per-player table, kept between calls.
+  Returns nil, or { rate, limit, weapon, violations } when the module should report.
+]]
+function W.evaluateRapidFire(state, weapon, now, params)
+    local class = MG.Weapons.FIRE_CLASS[weapon]
+    if not class then return nil end
+    local perSecond = class == 'semi' and params.semiMaxPerSecond or class == 'auto' and params.autoMaxPerSecond or params.sniperMaxPerSecond
+    local windowMs = params.windowSeconds * 1000
+    state.hits = state.hits or {}
+    local list = state.hits[weapon] or {}
+    local kept = {}
+    for _, t in ipairs(list) do if now - t < windowMs then kept[#kept + 1] = t end end
+    kept[#kept + 1] = now
+    state.hits[weapon] = kept
+    local limit = perSecond * params.windowSeconds
+    if #kept <= limit then return nil end
+    -- one violation per window: start counting afresh
+    state.hits[weapon] = {}
+    local v = {}
+    for _, t in ipairs(state.violations or {}) do if now - t < 30000 then v[#v + 1] = t end end
+    v[#v + 1] = now
+    state.violations = v
+    if #v < params.violations then return { blockOnly = true } end
+    state.violations = {}
+    return { rate = U.round(#kept / params.windowSeconds, 1), limit = perSecond, weapon = MG.Weapons.name(weapon), class = class, violations = #v }
+end
+
 AddEventHandler('weaponDamageEvent', function(sender, data)
+    local rf = MG.Detections.module('weapons.rapidfire')
+    if rf and MG.State.get(sender) then
+        local p = MG.State.get(sender)
+        p.rapidFire = p.rapidFire or {}
+        local r = W.evaluateRapidFire(p.rapidFire, U.u32(data.weaponType), GetGameTimer(), rf.params)
+        if r then
+            if rf.params.cancelViolations then CancelEvent() end
+            if not r.blockOnly then
+                MG.Detections.report(sender, 'weapons.rapidfire', { blocked = rf.params.cancelViolations, evidence = { hitsPerSecond = r.rate, limit = r.limit, weapon = r.weapon, class = r.class, violations = r.violations } })
+            end
+        end
+    end
     local m = MG.Detections.module('weapons.damage')
     if not m then return end
     local p = MG.State.get(sender)

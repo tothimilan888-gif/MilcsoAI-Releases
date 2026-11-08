@@ -117,6 +117,8 @@ AddEventHandler('explosionEvent', function(sender, ev)
     CancelEvent()
     MG.Detections.report(sender, 'explosions.filter', {
         blocked = true,
+        -- a blacklisted explosion type cannot come from normal gameplay on this server
+        conclusive = U.contains(reasons, 'blacklisted_type'),
         severity = (#reasons == 1 and reasons[1] == 'rate') and 'MEDIUM' or nil,
         evidence = {
             reasons = reasons, explosionType = ev.explosionType, explosionName = E.EXPLOSION_NAMES[ev.explosionType],

@@ -32,6 +32,21 @@ Mock.http = function(method, path, body)
     elseif path:match('^/commands/.+/ack') then
         backend.acks[#backend.acks + 1] = body
         return 200, { ok = true }
+    elseif path == '/admin/game-admins' and method == 'POST' then
+        backend.gameAdmins = backend.gameAdmins or {}
+        backend.lastAdminAdd = body
+        backend.gameAdmins[body.identifier] = { role = body.roleKey, roleName = body.roleKey, level = ({ moderator = 40, administrator = 60 })[body.roleKey] or 10, permissions = { 'players.view', 'players.kick' }, username = body.name }
+        return 200, { admin = { id = 'ga1', identifier = body.identifier, created = true }, grant = backend.gameAdmins[body.identifier] }
+    elseif path == '/admin/game-admins' then
+        return 200, { items = {} }
+    elseif path == '/admin/game-admins/remove' then
+        backend.gameAdmins[body.identifier] = nil
+        return 200, { removed = body.identifier }
+    elseif path == '/admins/resolve' then
+        for _, i in ipairs(body.identifiers) do
+            if backend.gameAdmins and backend.gameAdmins[i] then return 200, { admin = backend.gameAdmins[i] } end
+        end
+        return 200, { admin = json.null }
     elseif path == '/admin/audit' then
         backend.audits[#backend.audits + 1] = body
         return 200, { ok = true }
@@ -423,5 +438,171 @@ describe('recently left players and offline ban', function()
         for _, e in ipairs(list) do if e.name == 'Owner' then key = e.key end end
         local r = request(1, 'ban.offline', { key = key, reason = 'nope nope', permanent = true })
         expect(r.ok).toBe(false)
+    end)
+end)
+
+describe('ban settings honoured', function()
+    local function fresh(src)
+        local p = connect(src)
+        p.graceUntil = 0
+        return p
+    end
+    it('without "banAlone" a single heuristic detection set to ban only kicks, and says why', function()
+        fresh(70)
+        local m = MG.Detections.modules['movement.noclip']
+        m.action, m.params.banAlone = 'ban', false
+        local rec = MG.Detections.report(70, 'movement.noclip', { evidence = { reason = 'fast' } })
+        expect(rec.action).toBe('kick')
+        expect(rec.actionResult).toContain('independent server-side')
+    end)
+    it('with "banAlone" the same detection bans', function()
+        fresh(71)
+        local m = MG.Detections.modules['movement.noclip']
+        m.action, m.params.banAlone = 'ban', true
+        local rec = MG.Detections.report(71, 'movement.noclip', { evidence = { reason = 'fast' } })
+        expect(rec.action).toBe('ban')
+        m.action, m.params.banAlone = 'warn', false
+    end)
+    it('a short teleport never bans alone, a long one may', function()
+        fresh(72)
+        local m = MG.Detections.modules['movement.teleport']
+        m.action, m.params.banAlone = 'ban', true
+        expect(MG.Detections.report(72, 'movement.teleport', { banAloneEligible = false, evidence = {} }).action).toBe('kick')
+        fresh(73)
+        expect(MG.Detections.report(73, 'movement.teleport', { banAloneEligible = true, evidence = {} }).action).toBe('ban')
+        m.action, m.params.banAlone = 'warn', false
+    end)
+    it('a blacklisted explosion type (e.g. explosive ammo 45) bans when the module is set to ban', function()
+        fresh(74)
+        local m = MG.Detections.modules['explosions.filter']
+        m.action = 'ban'
+        MG.EntityChecks.explosionTypes[45] = true
+        local cancelled = Mock.trigger('explosionEvent', nil, 74, { explosionType = 45, damageScale = 1.0, isAudible = true, isInvisible = false, posX = 1, posY = 2, posZ = 3 })
+        expect(cancelled).toBe(true)
+        local d = MG.Detections.ring[#MG.Detections.ring]
+        expect(d.type).toBe('explosions.filter')
+        expect(d.action).toBe('ban')
+        m.action = 'kick'
+    end)
+    it('the default explosion blacklist contains the explosive ammo types', function()
+        local mods = MG.Schema.build(nil, nil)
+        expect(mods['explosions.filter'].params.blacklistedTypes).toContain('45')
+        expect(mods['explosions.filter'].params.blacklistedTypes).toContain('61')
+    end)
+end)
+
+
+describe('admins by license', function()
+    it('needs admins.manage (administrators do not have it by default)', function()
+        connect(80)
+        local r = request(1, 'admins.add', { target = 80, role = 'moderator' })
+        expect(r.ok).toBe(false)
+        expect(r.error).toContain('admins.manage')
+    end)
+    it('a controller gives an online player moderator rights by server id; they apply at once', function()
+        Mock.ace['81|milcsoguard.role.admin_controller'] = true
+        connect(81, { name = 'Controller' })
+        local target = MG.State.get(80)
+        expect(target.admin).toBeNil()
+        local r = request(81, 'admins.add', { target = '80', role = 'moderator', note = 'próbaidő' })
+        expect(r.ok).toBe(true)
+        expect(backend.lastAdminAdd.identifier).toBe(target.identifiers[1])
+        expect(backend.lastAdminAdd.actorLevel).toBe(70)
+        expect(backend.lastAdminAdd.actor.name).toBe('Controller')
+        expect(target.admin.level).toBe(40)
+        local n = Mock.clientEventsNamed('milcsoguard:notice', 80)
+        expect(n[#n].args[1]).toContain('jogosultságot kaptál')
+    end)
+    it('cannot give a role at or above your own level, nor to yourself, nor by ip', function()
+        expect(request(81, 'admins.add', { target = '80', role = 'admin_controller' }).error).toContain('saját szinted alatti')
+        expect(request(81, 'admins.add', { target = '81', role = 'moderator' }).ok).toBe(false)
+        expect(request(81, 'admins.add', { target = 'ip:10.0.0.80', role = 'moderator' }).ok).toBe(false)
+    end)
+    it('a dashboard change reaches online players through the admin_refresh command', function()
+        local target = MG.State.get(80)
+        backend.gameAdmins[target.identifiers[1]] = nil
+        backend.commands = { { id = 'c-ga', type = 'admin_refresh', payload = { identifiers = { target.identifiers[1] } } } }
+        Citizen.CreateThread(MG.Sync.pollCommands)
+        Mock.advance(500)
+        expect(target.admin).toBeNil()
+        expect(target.backendAdmin).toBeNil()
+    end)
+    it('the server console can add and remove admins by license', function()
+        local p = connect(82)
+        Mock.commands.milcsoguard(0, { 'addadmin', p.identifiers[1], 'administrator', 'Konzolos', 'Admin' })
+        Mock.advance(300)
+        expect(backend.lastAdminAdd.roleKey).toBe('administrator')
+        expect(backend.lastAdminAdd.name).toBe('Konzolos Admin')
+        expect(backend.lastAdminAdd.actorLevel).toBe(100)
+        expect(p.admin.level).toBe(60)
+        Mock.commands.milcsoguard(0, { 'removeadmin', p.identifiers[1] })
+        Mock.advance(500)
+        expect(p.admin).toBeNil()
+    end)
+end)
+
+describe('replay evidence for detections', function()
+    local function rec(src)
+        local p = connect(src)
+        p.graceUntil = 0
+        Mock.trigger('milcsoguard:replay:status', src, 'recording', '')
+        return p
+    end
+    it('a HIGH detection captures a replay linked to the detection, with a cooldown; the player stays', function()
+        rec(90)
+        local d = MG.Detections.report(90, 'movement.noclip', { evidence = { reason = 'fast' } }) -- warn, HIGH
+        local id = captureId(90)
+        expect(id).toBe(d.replayId)
+        sendReplay(90, id, { { 'GkXfoD' } })
+        Mock.advance(300)
+        expect(backend.replays[id].kind).toBe('detection')
+        expect(backend.replays[id].detectionLocalId).toBe(d.localId)
+        expect(droppedSrc(90)).toBeNil()
+        -- a second HIGH detection within the cooldown does not capture again
+        Mock.advance(11000) -- past dedup
+        local before = #Mock.clientEventsNamed('milcsoguard:replay:capture', 90)
+        MG.Detections.report(90, 'weapons.rapidfire', { evidence = {} })
+        expect(#Mock.clientEventsNamed('milcsoguard:replay:capture', 90)).toBe(before)
+    end)
+    it('LOW / MEDIUM detections do not capture', function()
+        rec(91)
+        MG.Detections.report(91, 'movement.speed', { evidence = {} }) -- MEDIUM
+        expect(captureId(91)).toBeNil()
+    end)
+    it('a kick with evidence drops the player only after the upload; a ban during it still bans', function()
+        local p = rec(92)
+        local m = MG.Detections.modules['weapons.rapidfire']
+        m.action = 'kick'
+        local d = MG.Detections.report(92, 'weapons.rapidfire', { evidence = {} })
+        expect(d.action).toBe('kick')
+        local id = captureId(92)
+        expect(id).toBeTruthy()
+        Mock.advance(400)
+        expect(droppedSrc(92)).toBeNil()
+        -- a non-ban detection meanwhile is only recorded
+        local again = MG.Detections.report(92, 'movement.noclip', { evidence = {} })
+        expect(again.actionResult).toBe('already being kicked')
+        -- a conclusive ban still creates the ban
+        local bansBefore = #backend.bans
+        MG.Detections.modules['events.honeypot'].action = 'ban'
+        local b = MG.Detections.report(92, 'events.honeypot', { conclusive = true, evidence = {} })
+        expect(b.action).toBe('ban')
+        Mock.advance(500)
+        expect(#backend.bans).toBe(bansBefore + 1)
+        expect(droppedSrc(92)).toBeTruthy()
+        m.action = 'warn'
+        expect(p.removing).toBe(true)
+    end)
+    it('a kicked player still appears among recently left players (for an offline ban)', function()
+        local p = rec(93)
+        MG.Detections.modules['weapons.rapidfire'].action = 'kick'
+        MG.Detections.report(93, 'weapons.rapidfire', { evidence = {} })
+        sendReplay(93, captureId(93), { { 'GkXfoE' } })
+        expect(droppedSrc(93)).toBeTruthy()
+        Mock.trigger('playerDropped', 93, 'Kicked')
+        local found = false
+        for _, r in ipairs(MG.State.recent) do if r.src == 93 then found = true end end
+        expect(found).toBe(true)
+        MG.Detections.modules['weapons.rapidfire'].action = 'warn'
     end)
 end)

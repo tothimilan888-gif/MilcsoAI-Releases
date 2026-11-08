@@ -80,6 +80,8 @@ code, .mono { font-family: 'JetBrains Mono', Consolas, monospace; font-size: 12p
 .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px; min-width: 0; }
 .card.flush { padding: 0; overflow: hidden; }
 .card.flush > h2.pad { padding: 16px 18px 0; }
+.card.flush > .card-head.pad { padding: 14px 18px 0; }
+.card.flush > p.pad { padding: 0 18px; }
 .card-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
 .card-head h2 { margin: 0; }
 .grid { display: grid; gap: 16px; }

@@ -9,6 +9,7 @@ import { normaliseIdentifiers } from '../lib/identifiers.js';
 import { Where, type Page } from '../lib/pagination.js';
 import { publish } from '../lib/realtime.js';
 import { emptyArrayAsObject } from '../lib/validate.js';
+import { linkReplaysToDetections } from './replays.js';
 import { resolvePlayer } from './players.js';
 
 export const detectionInput = z.object({
@@ -89,6 +90,8 @@ export async function ingestDetections(app: FastifyInstance, serverId: string, i
       });
     }
   });
+
+  await linkReplaysToDetections(app.db, serverId, ids);
 
   // Alerts are sent after commit, never block ingestion and are capped per batch.
   const alertable = created.filter((c) => severityRank(c.d.severity) >= severityRank('MEDIUM')).slice(0, 5);

@@ -9,6 +9,7 @@ import { useToast } from '../lib/toast';
 import { PageHeader } from '../components/Layout';
 import { Badge, ConfirmReason, Empty, ErrorState, Loading, Modal, Pagination, Tabs } from '../components/ui';
 
+const KIND_LABEL: Record<Replay['kind'], string> = { ban: 'Ban előtti felvétel', detection: 'Detektálás bizonyítéka', manual: 'Kézi kérés' };
 export const REPLAY_STATUS: Record<Replay['status'], string> = { requested: 'Kérve', uploading: 'Feltöltés', ready: 'Kész', failed: 'Sikertelen' };
 const statusTone = (s: Replay['status']) => (s === 'ready' ? 'ok' : s === 'failed' ? 'danger' : 'warn') as 'ok' | 'danger' | 'warn';
 const fmtSize = (b: number) => (b >= 1024 * 1024 ? `${(b / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1024))} KB`);
@@ -102,7 +103,7 @@ export function ReplayPlayer({ replay }: { replay: Replay }) {
         <button className="btn sm" onClick={() => setFlipped((f) => !f)} aria-pressed={flipped} title="Csak a megjelenítést fordítja (régi, fejjel lefelé rögzített felvételekhez)">Kép fordítása</button>
         <span className="muted small nowrap">{fmtSecs(total)} · {replay.width}×{replay.height} @ {replay.fps} fps · {fmtSize(replay.size_bytes)}</span>
       </div>
-      <p className="muted small">A sáv jobb széle a {replay.kind === 'ban' ? 'ban' : 'kérés'} pillanata. A felvétel a játékos saját kliensén készült: egy csaló manipulálhatja vagy blokkolhatja, ezért a detektálásokkal együtt értékeld.</p>
+      <p className="muted small">A sáv jobb széle a {replay.kind === 'ban' ? 'ban' : replay.kind === 'detection' ? 'detektálás' : 'kérés'} pillanata. A felvétel a játékos saját kliensén készült: egy csaló manipulálhatja vagy blokkolhatja, ezért a detektálásokkal együtt értékeld.</p>
     </div>
   );
 }
@@ -112,7 +113,7 @@ export function ReplayModal({ replay, onClose, footer }: { replay: Replay; onClo
   return (
     <Modal title={`Visszajátszás – ${replay.player_name || '?'}`} onClose={onClose} wide footer={footer}>
       <dl className="kv">
-        <dt>Típus</dt><dd>{replay.kind === 'ban' ? 'Ban előtti felvétel' : 'Kézi kérés'}{replay.ban_code && <> · <span className="mono">{replay.ban_code}</span></>}</dd>
+        <dt>Típus</dt><dd>{KIND_LABEL[replay.kind]}{replay.detection_type && <> · <span className="mono">{replay.detection_type}</span></>}{replay.ban_code && <> · <span className="mono">{replay.ban_code}</span></>}</dd>
         <dt>Idő</dt><dd>{fmtDate(replay.created_at)} <span className="muted">({fmtRelative(replay.created_at)})</span></dd>
         {replay.reason && <><dt>Ok</dt><dd>{replay.reason}</dd></>}
         <dt>Kérte</dt><dd>{replay.requested_by_label}</dd>
@@ -131,8 +132,8 @@ export function ReplayTable({ items, onOpen, showPlayer = true }: { items: Repla
         <tr key={r.id} className="clickable" onClick={() => onOpen(r)} tabIndex={0} onKeyDown={(e) => e.key === 'Enter' && onOpen(r)}>
           <td className="small nowrap">{fmtDate(r.created_at)}</td>
           {showPlayer && <td>{r.player_name || '–'}</td>}
-          <td>{r.kind === 'ban' ? <Badge tone="danger">ban</Badge> : <Badge>kézi</Badge>}</td>
-          <td className="truncate">{r.reason}{r.ban_code && <span className="mono muted small"> {r.ban_code}</span>}</td>
+          <td>{r.kind === 'ban' ? <Badge tone="danger">ban</Badge> : r.kind === 'detection' ? <Badge tone="warn">detektálás</Badge> : <Badge>kézi</Badge>}</td>
+          <td className="truncate">{r.detection_type ?? r.reason}{r.ban_code && <span className="mono muted small"> {r.ban_code}</span>}</td>
           <td className="small nowrap">{r.duration_ms ? fmtSecs(r.duration_ms) : '–'}</td>
           <td><Badge tone={statusTone(r.status)} title={r.error ?? undefined}>{REPLAY_STATUS[r.status]}</Badge>{r.status === 'failed' && r.error && <div className="muted small">{r.error}</div>}</td>
           <td className="small">{r.requested_by_label}</td>
@@ -173,7 +174,7 @@ export function ReplaysPage() {
   const can = useCan();
   const toast = useToast();
   const qc = useQueryClient();
-  const [f, setF] = useState({ page: 1, kind: '' as '' | 'ban' | 'manual' });
+  const [f, setF] = useState({ page: 1, kind: '' as '' | 'ban' | 'manual' | 'detection' });
   const [open, setOpen] = useState<Replay | null>(null);
   const [del, setDel] = useState<Replay | null>(null);
   const q = useQuery({
@@ -190,7 +191,7 @@ export function ReplaysPage() {
         actions={st && <span className="muted small">Tárhely: {fmtSize(st.usedBytes)} / {fmtSize(st.limitBytes)}</span>}
       />
       <div className="filters">
-        <Tabs value={f.kind} onChange={(kind) => setF({ page: 1, kind })} options={[['', 'Mind'], ['ban', 'Ban előtti'], ['manual', 'Kézi kérés']]} />
+        <Tabs value={f.kind} onChange={(kind) => setF({ page: 1, kind })} options={[['', 'Mind'], ['ban', 'Ban előtti'], ['detection', 'Detektálás'], ['manual', 'Kézi kérés']]} />
       </div>
       <section className="card flush">
         {q.isLoading ? <Loading /> : q.error ? <ErrorState error={q.error} retry={() => void q.refetch()} /> : q.data!.items.length === 0 ? (

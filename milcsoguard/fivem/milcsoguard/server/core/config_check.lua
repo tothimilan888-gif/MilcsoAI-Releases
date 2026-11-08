@@ -97,6 +97,13 @@ function Check.run(cfg)
                 rp[k] = math.max(lim[1], math.min(lim[2], v))
             end
         end
+        if rp.onDetection and not MG.SEVERITY_RANK[rp.detectionMinSeverity or ''] then
+            err('Config.Replay.detectionMinSeverity', 'invalid severity -> using HIGH')
+            rp.detectionMinSeverity = 'HIGH'
+        end
+        local cd = tonumber(rp.detectionCooldownSeconds) or 120
+        if cd < 30 then warn('Config.Replay.detectionCooldownSeconds', 'below 30s; using 30') cd = 30 end
+        rp.detectionCooldownSeconds = cd
         if rp.enabled and math.ceil(rp.seconds / rp.segmentSeconds) + 1 > 16 then
             warn('Config.Replay.segmentSeconds', 'too many segments for the replay length; raising segmentSeconds')
             rp.segmentSeconds = math.ceil(rp.seconds / 15)

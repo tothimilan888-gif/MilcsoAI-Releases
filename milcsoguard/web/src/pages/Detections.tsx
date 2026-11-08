@@ -4,7 +4,8 @@ import { Link } from 'react-router-dom';
 import { api, qs } from '../lib/api';
 import { useCan, useServer } from '../lib/server';
 import { ACTION_LABEL, fmtDate, REVIEW_LABEL, SOURCE_LABEL } from '../lib/format';
-import { SEVERITIES, type Detection, type Page } from '../lib/types';
+import { SEVERITIES, type Detection, type Page, type Replay } from '../lib/types';
+import { ReplayPlayer } from './Replays';
 import { useToast } from '../lib/toast';
 import { PageHeader } from '../components/Layout';
 import { Badge, ConfirmReason, Empty, ErrorState, JsonView, Loading, Modal, Pagination, SeverityBadge } from '../components/ui';
@@ -15,6 +16,11 @@ export function DetectionDetail({ d, onClose }: { d: Detection; onClose: () => v
   const toast = useToast();
   const qc = useQueryClient();
   const [status, setStatus] = useState<'confirmed' | 'false_positive' | 'dismissed' | 'pending' | null>(null);
+  const evidence = useQuery({
+    queryKey: ['detections', server.id, 'detail', d.id],
+    queryFn: () => api<{ replays: Replay[] }>('GET', `/servers/${server.id}/detections/${d.id}`),
+    enabled: can('replays.view'),
+  });
   const review = useMutation({
     mutationFn: (v: { status: string; note: string }) => api('POST', `/servers/${server.id}/detections/${d.id}/review`, v),
     onSuccess: () => {
@@ -41,6 +47,12 @@ export function DetectionDetail({ d, onClose }: { d: Detection; onClose: () => v
         <dt>Azonosítók</dt><dd className="mono small">{d.identifiers.join(', ') || '–'}</dd>
         <dt>Felülvizsgálat</dt><dd>{REVIEW_LABEL[d.review_status]}{d.reviewed_by_label && <span className="muted"> – {d.reviewed_by_label}, {fmtDate(d.reviewed_at)}: {d.review_note}</span>}</dd>
       </dl>
+      {can('replays.view') && evidence.data && evidence.data.replays.length > 0 && (
+        <>
+          <h3>Videós bizonyíték (POV)</h3>
+          {evidence.data.replays.map((r) => <ReplayPlayer key={r.id} replay={r} />)}
+        </>
+      )}
       <h3>Bizonyíték</h3>
       <JsonView value={d.evidence} />
       {status && (

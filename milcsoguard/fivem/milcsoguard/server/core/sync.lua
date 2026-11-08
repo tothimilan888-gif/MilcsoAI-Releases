@@ -165,6 +165,20 @@ local function handleCommand(cmd)
         if not match then return 'failed', 'net id now belongs to another player' end
         DropPlayer(tostring(p.src), ('Kickelve: %s (%s)'):format(U.sanitize(pl.reason or '-', 200), U.sanitize(pl.by or 'admin', 32)))
         return 'done', 'dropped'
+    elseif t == 'admin_refresh' then
+        -- an identifier-based admin was added / changed / removed: re-read the grant of matching online players
+        local wanted = U.toSet(pl.identifiers or {})
+        local n = 0
+        for _, p in ipairs(MG.State.list()) do
+            for _, i in ipairs(p.identifiers) do
+                if wanted[i] then
+                    n = n + 1
+                    Citizen.CreateThread(function() Sync.refreshAdmin(p) end)
+                    break
+                end
+            end
+        end
+        return 'done', ('%d online player(s) refreshed'):format(n)
     elseif t == 'replay_request' then
         local p = MG.State.get(pl.netId)
         local fail = function(why) MG.Replay.failRemote(pl.replayId, why) return 'failed', why end
@@ -187,6 +201,19 @@ local function handleCommand(cmd)
         return 'done', 'announced'
     end
     return 'failed', 'unknown command'
+end
+
+--- Re-reads a player's backend admin grant (web account or identifier-based) and applies it.
+function Sync.refreshAdmin(p)
+    local r = MG.Api.await('POST', '/admins/resolve', { identifiers = U.filterIdentifiers(p.identifiers, U.toSet(Config.Api.excludeIdentifierTypes)) })
+    if not r.ok or not MG.State.get(p.src) then return false end
+    local before = p.backendAdmin and p.backendAdmin.level
+    p.backendAdmin = r.data.admin ~= json.null and r.data.admin or nil
+    local admin = MG.Permissions.refresh(p.src)
+    if before ~= (p.backendAdmin and p.backendAdmin.level) then
+        TriggerClientEvent('milcsoguard:notice', p.src, admin and ('Anticheat jogosultság: %s'):format(admin.label) or 'Az anticheat admin jogosultságod megszűnt.')
+    end
+    return true
 end
 
 function Sync.pollCommands()

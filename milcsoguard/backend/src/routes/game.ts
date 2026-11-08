@@ -13,6 +13,7 @@ import { takePendingCommands } from '../services/commands.js';
 import { DETECTION_COLUMNS, detectionInput, detectionListQuery, ingestDetections, listDetections, reviewDetection, type DetectionRow } from '../services/detections.js';
 import { resolvePlayer } from '../services/players.js';
 import { activeWhitelist, playerWhitelist } from '../services/whitelist.js';
+import { findRole, listGameAdmins, removeGameAdmin, resolveGameAdmin, upsertGameAdmin, type Assigner } from '../services/gameAdmins.js';
 import {
   REPLAY_COLUMNS, REPLAY_MAX_PART_BYTES, REPLAY_MAX_PARTS, REPLAY_MAX_TOTAL_BYTES,
   assertUploadable, ensureStorage, getReplay, linkReplaysToBan, replayParts, type ReplayRow,
@@ -34,7 +35,7 @@ const actorSchema = z.object({
 type ActorInput = z.infer<typeof actorSchema>;
 
 interface LinkedAdmin {
-  userId: string;
+  userId: string | null;
   username: string;
   roleKey: string;
   roleName: string;
@@ -58,8 +59,11 @@ async function findLinkedAdmin(db: Queryable, serverId: string, ids: Identifier[
     [serverId, linkable.map((i) => i.type), linkable.map((i) => i.value)],
   );
   const row = r.rows[0];
-  if (!row) return null;
-  return { ...row, permissions: row.permissions.filter(isPermission) };
+  const account = row ? { ...row, permissions: row.permissions.filter(isPermission) } : null;
+  // Identifier-based admins (added by license in the panel / dashboard); the stronger grant wins.
+  const byIdentifier = await resolveGameAdmin(db, serverId, ids);
+  if (account && byIdentifier) return byIdentifier.level > account.level ? byIdentifier : account;
+  return account ?? byIdentifier;
 }
 
 /**
@@ -403,12 +407,13 @@ export default async function gameRoutes(app: FastifyInstance) {
     const body = parse(
       z.object({
         id: z.uuid(),
-        kind: z.enum(['ban', 'manual']),
+        kind: z.enum(['ban', 'manual', 'detection']),
         playerName: z.string().max(64).default(''),
         identifiers,
         reason: z.string().max(500).default(''),
         banId: z.uuid().optional(),
         banLocalId: z.string().min(8).max(64).regex(/^[A-Za-z0-9_-]+$/).optional(),
+        detectionLocalId: z.string().min(8).max(64).regex(/^[A-Za-z0-9_-]+$/).optional(),
         requestedBy: actorSchema.optional(),
         width: z.number().int().min(16).max(4096).optional(),
         height: z.number().int().min(16).max(4096).optional(),
@@ -424,6 +429,9 @@ export default async function gameRoutes(app: FastifyInstance) {
     if (!banId && body.banLocalId) {
       banId = (await app.db.query<{ id: string }>('SELECT id FROM bans WHERE server_id = $1 AND local_id = $2', [sid, body.banLocalId])).rows[0]?.id ?? null;
     }
+    const detectionId = body.detectionLocalId
+      ? (await app.db.query<{ id: string }>('SELECT id FROM detections WHERE server_id = $1 AND local_id = $2', [sid, body.detectionLocalId])).rows[0]?.id ?? null
+      : null;
     const existing = (await app.db.query<{ server_id: string; status: string }>('SELECT server_id, status FROM replays WHERE id = $1', [body.id])).rows[0];
     if (existing) {
       // A replay the web dashboard requested (or a retry of this call).
@@ -436,10 +444,12 @@ export default async function gameRoutes(app: FastifyInstance) {
       );
     } else {
       await app.db.query(
-        `INSERT INTO replays (id, server_id, player_id, player_name, kind, status, reason, ban_id, ban_local_id, requested_by, requested_by_label, width, height, fps)
-         VALUES ($1, $2, $3, $4, $5, 'uploading', $6, $7, $8, $9, $10, $11, $12, $13)`,
+        `INSERT INTO replays (id, server_id, player_id, player_name, kind, status, reason, ban_id, ban_local_id, requested_by, requested_by_label, width, height, fps,
+                              detection_local_id, detection_id)
+         VALUES ($1, $2, $3, $4, $5, 'uploading', $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
         [body.id, sid, playerId, body.playerName, body.kind, body.reason, banId, body.banLocalId ?? null, actor.userId ?? null,
-          body.kind === 'ban' ? 'anticheat:ban' : actor.label, body.width ?? null, body.height ?? null, body.fps ?? null],
+          body.kind === 'manual' ? actor.label : `anticheat:${body.kind}`, body.width ?? null, body.height ?? null, body.fps ?? null,
+          body.detectionLocalId ?? null, detectionId],
       );
       if (body.kind === 'manual') {
         await audit(app.db, actor, { serverId: sid, action: 'replay.request', targetType: 'replay', targetId: body.id, details: { player: body.playerName, reason: body.reason } });
@@ -583,6 +593,45 @@ export default async function gameRoutes(app: FastifyInstance) {
     const actor = await gameActor(app, req, body.actor, 'whitelist.manage');
     await removeWhitelist(app, req.game!.serverId, id, actor);
     return { ok: true };
+  });
+
+  // ---------------------------------------------------------------- identifier-based admins
+  /** The in-game admin's rights: the game server's own check (actorLevel), narrowed by a linked grant. */
+  async function assigner(req: FastifyRequest, actor: ActorInput, actorLevel: number): Promise<Assigner> {
+    const linked = await findLinkedAdmin(app.db, req.game!.serverId, normaliseIdentifiers(actor.identifiers));
+    if (!linked || actor.source === 'console') return { level: actorLevel, permissions: null };
+    return { level: Math.min(actorLevel, linked.level), permissions: new Set(linked.permissions) };
+  }
+
+  app.get('/admin/game-admins', async (req) => ({ items: await listGameAdmins(app.db, req.game!.serverId) }));
+
+  app.post('/admin/game-admins', async (req) => {
+    const body = parse(
+      z.object({
+        identifier: z.string().trim().min(3).max(100), name: z.string().trim().max(64).default(''), roleKey: z.string().regex(/^[a-z][a-z0-9_]{1,31}$/),
+        note: z.string().trim().max(300).default(''), actor: actorSchema, actorLevel: z.number().int().min(1).max(100),
+      }),
+      req.body,
+    );
+    const sid = req.game!.serverId;
+    const actor = await gameActor(app, req, body.actor, 'admins.manage');
+    const role = await findRole(app.db, sid, { key: body.roleKey });
+    const r = await upsertGameAdmin(app.db, sid, { identifier: body.identifier, name: body.name, note: body.note, role }, await assigner(req, body.actor, body.actorLevel), actor);
+    const admin = await resolveGameAdmin(app.db, sid, normaliseIdentifiers([r.identifier]));
+    return { admin: r, grant: admin && { role: admin.roleKey, roleName: admin.roleName, level: admin.level, permissions: admin.permissions, username: admin.username } };
+  });
+
+  app.post('/admin/game-admins/remove', async (req) => {
+    const body = parse(z.object({ identifier: z.string().trim().min(3).max(100), actor: actorSchema, actorLevel: z.number().int().min(1).max(100) }), req.body);
+    const actor = await gameActor(app, req, body.actor, 'admins.manage');
+    return removeGameAdmin(app.db, req.game!.serverId, { identifier: body.identifier }, await assigner(req, body.actor, body.actorLevel), actor);
+  });
+
+  /** Current backend grant for a player (after an admin_refresh command). */
+  app.post('/admins/resolve', async (req) => {
+    const body = parse(z.object({ identifiers }), req.body);
+    const linked = await findLinkedAdmin(app.db, req.game!.serverId, normaliseIdentifiers(body.identifiers));
+    return { admin: linked ? { role: linked.roleKey, roleName: linked.roleName, level: linked.level, permissions: linked.permissions, username: linked.username } : null };
   });
 
   app.get('/admin/members', async (req) => {

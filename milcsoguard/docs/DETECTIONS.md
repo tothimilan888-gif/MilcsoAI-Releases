@@ -22,7 +22,9 @@
 
 * Akciók: `log` → `warn` (admin riasztás + opcionális üzenet a játékosnak) → `monitor` (megjelölés X percre) → `kick` → `ban`.
 * A végső akció = max(modul akciója, kockázati küszöb szerinti eszkaláció). A kockázat csillapodik (felezési idő, alapból 30 perc).
-* **Ban csak akkor**, ha (a) a backend/konfiguráció engedi (`autoBanEnabled`), (b) legalább **2 független szerveroldali** detektálástípus támasztja alá a korrelációs ablakban, **vagy** a jel szerveroldali és perdöntő (pl. csapda event), (c) a circuit breaker zárt (alapból max. 5 auto-ban / 10 perc). Ha bármelyik nem teljesül, a ban **kickre** módosul, és ez a detektálás `actionResult` mezőjében olvasható.
+* **Ban csak akkor**, ha (a) a backend/konfiguráció engedi (`autoBanEnabled`), (b) legalább **2 független szerveroldali** detektálástípus támasztja alá a korrelációs ablakban, **vagy** a jel szerveroldali és perdöntő, (c) a circuit breaker zárt (alapból max. 5 auto-ban / 10 perc). Ha bármelyik nem teljesül, a ban **kickre** módosul, és ez a detektálás `actionResult` mezőjében olvasható (pl. „needs 2 independent server-side detections”).
+* **Perdöntő** (egyedül is bannolhat): csapda event, tiltólistás robbanástípus (pl. orbitális ágyú, robbanólövedék), valamint minden olyan szerveroldali modul, amelynél bekapcsolod a **„Önmagában is bannolhat”** (`banAlone`) kapcsolót (Anticheat beállítások → modul paraméterei). A teleportnál ez csak a `highSeverityDistance` (alap 1500 m) feletti ugrásra hat, mert a rövid teleport gyakran ajtó / interior script. Kliensoldali modulnak nincs ilyen kapcsolója.
+* **Mielőtt egy heurisztikus modulnál (noclip, teleport, rapid fire) bekapcsolod a `banAlone`-t**, nézd meg 1-2 hétig a detektálásait: ha nincs téves riasztás a valódi játékosaidon, akkor kapcsold be.
 * Kliensoldali modul akciója sem a backend, sem a resource validátorában nem állítható `ban`-ra.
 * A backend kiesése **nem okoz bant**: a döntés helyi, a banok helyi gyorsítótárból érvényesülnek, a csatlakozás alapból *fail-open* (az ismeretlen játékos beengedhető, a gyorsítótárban lévő bannolt nem).
 
@@ -70,162 +72,174 @@ exports.milcsoguard:IsAdmin(source, 'bans.create') -- jogosultság lekérdezése
 ### `movement.noclip` – Noclip / fly
 
 * **Forrás:** szerver (megbízható) · **Alapértelmezés:** bekapcsolva, warn, HIGH
-* **Mit észlel:** Gyalogos elmozdulás, miközben a szinkronizált sebességvektor közel nulla, vagy a ped ütközése ki van kapcsolva.
-* **Korlátok:** Heurisztika: a szinkronizált sebesség hálózati késéssel frissül, attach-olt (pl. hordozott) pedeknél hamis pozitív lehet – ezeket kiszűri.
-* **Paraméterek:** `consecutive` = 3; `flagCollisionDisabled` = true; `maxReportedVelocity` = 1.0 m/s; `minDisplacementSpeed` = 6 m/s
+* **Mit észlel:** Gyalogosan, zuhanás nélkül a sprintnél jóval gyorsabb haladás (miközben a szinkronizált sebesség alacsony), tartós emelkedés jármű nélkül (repülés), vagy gyors mozgás kikapcsolt ütközéssel.
+* **Korlátok:** Heurisztika. A szerver a gyalogos pedek sebességvektorát gyakran nullának látja, ezért a küszöb a sprint (~7-8 m/s) és a sprintgyorsító scriptek felett van. Attach-olt (hordozott) és zuhanó pedeket kiszűri.
+* **Paraméterek:** `banAlone` = false; `collisionMinSpeed` = 4 m/s; `consecutive` = 3; `flagCollisionDisabled` = true; `maxReportedVelocity` = 1.0 m/s; `minDisplacementSpeed` = 12 m/s; `risingSpeed` = 4 m/s
 
 ### `movement.speed` – Speedhack (gyalog)
 
 * **Forrás:** szerver (megbízható) · **Alapértelmezés:** bekapcsolva, warn, MEDIUM
 * **Mit észlel:** Tartósan a sprint sebesség feletti vízszintes haladás gyalogosan.
 * **Korlátok:** Esés, ragdoll és ejtőernyő magas vízszintes sebességet adhat; a modul a gyors süllyedést kiszűri, és több egymást követő mintát vár.
-* **Paraméterek:** `consecutive` = 3; `fallingSpeedIgnore` = 3.5 m/s; `maxOnFootSpeed` = 14 m/s
+* **Paraméterek:** `banAlone` = false; `consecutive` = 3; `fallingSpeedIgnore` = 3.5 m/s; `maxOnFootSpeed` = 14 m/s
 
 ### `movement.superjump` – Super jump
 
 * **Forrás:** szerver (megbízható) · **Alapértelmezés:** bekapcsolva, kick, HIGH
 * **Mit észlel:** A játék szuperugrás képessége aktív (IsPlayerUsingSuperJump).
 * **Korlátok:** Ha a szervered szándékosan engedi (pl. esemény), kapcsold ki vagy használd a SetExempt exportot.
+* **Paraméterek:** `banAlone` = false
 
 ### `movement.teleport` – Teleport anomália
 
 * **Forrás:** szerver (megbízható) · **Alapértelmezés:** bekapcsolva, warn, MEDIUM
-* **Mit észlel:** Két szerveroldali pozícióminta közötti, fizikailag lehetetlen elmozdulás.
-* **Korlátok:** Kliensoldali scriptek (interior bejáratok, liftek) SetEntityCoords-szal legálisan teleportálhatnak; ezeket a szerver nem tudja megkülönböztetni. Ezért alapból csak figyelmeztet; használd a teleportZones listát és az AllowMovement exportot.
-* **Paraméterek:** `highSeverityDistance` = 1500 m; `ignoreZones` = true; `maxDistanceInVehicle` = 400 m; `maxDistanceOnFoot` = 120 m
+* **Mit észlel:** Két szerveroldali pozícióminta közötti, fizikailag lehetetlen elmozdulás (vízszintesen, vagy felfelé). Zuhanás nem számít.
+* **Korlátok:** Kliensoldali scriptek (interior bejáratok, liftek, házak) SetEntityCoords-szal legálisan teleportálhatnak; ezeket a szerver nem tudja megkülönböztetni. Használd a teleportZones listát és az AllowMovement exportot. Az "önmagában is bannolhat" csak a HIGH távolság feletti teleportokra hat.
+* **Paraméterek:** `banAlone` = false; `highSeverityDistance` = 1500 m; `ignoreZones` = true; `maxDistanceFalling` = 90 m; `maxDistanceInVehicle` = 400 m; `maxDistanceOnFoot` = 50 m; `maxRiseOnFoot` = 25 m
 
 ### `movement.vehicle_speed` – Jármű sebesség
 
 * **Forrás:** szerver (megbízható) · **Alapértelmezés:** bekapcsolva, warn, MEDIUM
 * **Mit észlel:** Járműtípusonkénti maximális sebesség túllépése (csak a sofőr).
 * **Korlátok:** Egyedi, felturbózott addon járműveknél emeld a küszöböt.
-* **Paraméterek:** `automobile` = 95 m/s; `bike` = 90 m/s; `boat` = 70 m/s; `consecutive` = 2; `heli` = 95 m/s; `plane` = 220 m/s
+* **Paraméterek:** `automobile` = 95 m/s; `banAlone` = false; `bike` = 90 m/s; `boat` = 70 m/s; `consecutive` = 2; `heli` = 95 m/s; `plane` = 220 m/s
 
 ### `player.damage_modifier` – Sebzésszorzó
 
 * **Forrás:** szerver (megbízható) · **Alapértelmezés:** bekapcsolva, kick, HIGH
 * **Mit észlel:** A játékos fegyver- vagy közelharci sebzésszorzója a megengedett felett.
 * **Korlátok:** Csak a hálózaton szinkronizált szorzót látja.
-* **Paraméterek:** `maxMeleeModifier` = 1.05; `maxWeaponModifier` = 1.05
+* **Paraméterek:** `banAlone` = false; `maxMeleeModifier` = 1.05; `maxWeaponModifier` = 1.05
 
 ### `player.godmode` – Godmode (invincible flag)
 
 * **Forrás:** szerver (megbízható) · **Alapértelmezés:** bekapcsolva, warn, HIGH
 * **Mit észlel:** A szinkronizált játékos-invincible jelző aktív (GetPlayerInvincible).
 * **Korlátok:** Csak a hálózaton szinkronizált invincible állapotot látja; a SetEntityProofs vagy memóriamódosítás alapú godmode-ot nem. Karakterkészítő / cutscene scriptek legálisan bekapcsolhatják – ezekhez SetExempt.
-* **Paraméterek:** `consecutive` = 2
+* **Paraméterek:** `banAlone` = false; `consecutive` = 2
 
 ### `player.health` – Életerő / páncél a maximum felett
 
 * **Forrás:** szerver (megbízható) · **Alapértelmezés:** bekapcsolva, kick, HIGH
 * **Mit észlel:** Életerő a ped maximuma felett, vagy páncél a játékos maximuma felett.
 * **Korlátok:** Ha egy script a max. életerőt is átállítja, az nem jelez (a maximumhoz viszonyít).
-* **Paraméterek:** `consecutive` = 2; `tolerance` = 5 HP
+* **Paraméterek:** `banAlone` = false; `consecutive` = 2; `tolerance` = 5 HP
 
 ### `player.invisible` – Láthatatlanság
 
 * **Forrás:** szerver (megbízható) · **Alapértelmezés:** bekapcsolva, warn, MEDIUM
 * **Mit észlel:** A játékos pedje nem látható (IsEntityVisible = false), miközben él.
 * **Korlátok:** Admin és spawn scriptek láthatatlanná tehetik a pedet; join/respawn után türelmi idő van.
-* **Paraméterek:** `consecutive` = 3
+* **Paraméterek:** `banAlone` = false; `consecutive` = 3
 
 ### `weapons.blacklist` – Tiltott fegyver
 
 * **Forrás:** szerver (megbízható) · **Alapértelmezés:** bekapcsolva, kick, HIGH
 * **Mit észlel:** A játékos kezében tiltólistás fegyver van; a szerver el is veszi.
 * **Korlátok:** A kiválasztott fegyvert mintavételezi, nem minden lövést.
-* **Paraméterek:** `removeWeapon` = true; `weapons` = WEAPON_RAILGUN, WEAPON_RAILGUNXM3, WEAPON_MINIGUN, WEAPON_RAYMINIGUN, WEAPON_RAYPISTOL, WEAPON_RAYCARBINE, …
+* **Paraméterek:** `banAlone` = false; `removeWeapon` = true; `weapons` = WEAPON_RAILGUN, WEAPON_RAILGUNXM3, WEAPON_MINIGUN, WEAPON_RAYMINIGUN, WEAPON_RAYPISTOL, WEAPON_RAYCARBINE, WEAPON_STUNGUN_MP, WEAPON_HOMINGLAUNCHER, WEAPON_EMPLAUNCHER, WEAPON_COMPACTLAUNCHER
 
 ### `weapons.damage` – Sebzés anomália
 
 * **Forrás:** szerver game event (megbízható) · **Alapértelmezés:** bekapcsolva, warn, HIGH
 * **Mit észlel:** Túl nagy sebzésérték, a kézben lévőtől eltérő fegyverrel okozott sebzés, közelharci sebzés nagy távolságból, vagy túl sűrű találat.
 * **Korlátok:** A kiválasztott fegyver szerveroldali értéke késhet egy fegyverváltásnál; ezért a fegyvereltérés több előfordulást vár.
-* **Paraméterek:** `cancelViolations` = true; `maxDamage` = 400; `maxHitsPerSecond` = 20; `meleeMaxDistance` = 8 m; `weaponMismatchCount` = 3
+* **Paraméterek:** `banAlone` = false; `cancelViolations` = true; `maxDamage` = 400; `maxHitsPerSecond` = 20; `meleeMaxDistance` = 8 m; `weaponMismatchCount` = 3
 
 ### `weapons.give_event` – Fegyveradás más pednek
 
 * **Forrás:** szerver game event (megbízható) · **Alapértelmezés:** bekapcsolva, kick, HIGH
 * **Mit észlel:** Kliens hálózati eventtel fegyvert ad egy másik játékos pedjének (giveWeaponEvent). Az eventet blokkolja.
 * **Korlátok:** Legitim kliensoldali fegyveradás más játékosnak ritka; ha egy scripted ilyet csinál, tedd a resource-ot whitelistre.
+* **Paraméterek:** `banAlone` = false
 
 ### `weapons.inventory_mismatch` – Fegyver az inventoryn kívül
 
 * **Forrás:** szerver (megbízható) · **Alapértelmezés:** bekapcsolva, warn, HIGH
 * **Mit észlel:** Kézben lévő fegyver, ami nincs a framework inventoryjában (ox_inventory / ESX loadout / QBCore item).
 * **Korlátok:** Csak telepített ESX/QBCore/ox_inventory esetén aktív. Inventory szinkron késése miatt több mintát vár; standalone módban nem fut.
-* **Paraméterek:** `consecutive` = 2; `ignore` = WEAPON_UNARMED, GADGET_PARACHUTE, WEAPON_FIREEXTINGUISHER, WEAPON_PETROLCAN; `removeWeapon` = false
+* **Paraméterek:** `banAlone` = false; `consecutive` = 2; `ignore` = WEAPON_UNARMED, GADGET_PARACHUTE, WEAPON_FIREEXTINGUISHER, WEAPON_PETROLCAN; `removeWeapon` = false
+
+### `weapons.rapidfire` – Rapid fire
+
+* **Forrás:** szerver game event (megbízható) · **Alapértelmezés:** bekapcsolva, warn, HIGH
+* **Mit észlel:** Egy fegyverrel a fegyver tűzgyorsaságánál jóval sűrűbb találat (fegyverosztályonként), ismételten.
+* **Korlátok:** A szerver a találatokat látja, nem a lövéseket. Sörétesek (egy lövés = sok sörét), minigun, gránátvetők és addon fegyverek nincsenek vizsgálva. Laggolás után a találatok egyszerre érkezhetnek, ezért több túllépést vár.
+* **Paraméterek:** `autoMaxPerSecond` = 22; `banAlone` = false; `cancelViolations` = true; `semiMaxPerSecond` = 10; `sniperMaxPerSecond` = 4; `violations` = 2; `windowSeconds` = 2 s
 
 ### `weapons.remove_event` – Fegyver elvétele mástól
 
 * **Forrás:** szerver game event (megbízható) · **Alapértelmezés:** bekapcsolva, kick, HIGH
 * **Mit észlel:** Kliens másik játékos fegyvereit veszi el (removeWeaponEvent / removeAllWeaponsEvent). Blokkolja.
+* **Paraméterek:** `banAlone` = false
 
 ### `explosions.filter` – Robbanásszűrő
 
 * **Forrás:** szerver game event (megbízható) · **Alapértelmezés:** bekapcsolva, kick, HIGH
-* **Mit észlel:** Tiltott típusú, láthatatlan-néma, felnagyított vagy túl sűrű robbanások blokkolása.
+* **Mit észlel:** Tiltott típusú, láthatatlan-néma, felnagyított vagy túl sűrű robbanások blokkolása. A tiltólistás típus perdöntő: egyedül is bannolhat. Alapból tiltva: 29/37 léghajó, 45/61 robbanólövedék, 59 orbitális ágyú, 70 raygun.
 * **Korlátok:** A járműrobbanások tulajdonosa lehet a jármű, nem a játékos – ezért a tulajdonos-egyezést nem vizsgálja.
-* **Paraméterek:** `blacklistedTypes` = 29, 37, 59, 70; `flagInvisibleSilent` = true; `maxDamageScale` = 1.5; `maxPerWindow` = 6; `windowSeconds` = 10 s
+* **Paraméterek:** `banAlone` = false; `blacklistedTypes` = 29, 37, 45, 59, 61, 70; `flagInvisibleSilent` = true; `maxDamageScale` = 1.5; `maxPerWindow` = 6; `windowSeconds` = 10 s
 
 ### `entities.clear_tasks` – Más ped feladatainak törlése
 
 * **Forrás:** szerver game event (megbízható) · **Alapértelmezés:** bekapcsolva, warn, MEDIUM
 * **Mit észlel:** Kliens más játékos pedjének feladatait törli (kidobás járműből, "kick from vehicle" cheat). Blokkolja.
 * **Korlátok:** Ha egy script legálisan használ ClearPedTasksImmediately-t más játékoson (pl. rendőr), állítsd log-ra.
+* **Paraméterek:** `banAlone` = false
 
 ### `entities.projectile` – Lövedék flood
 
 * **Forrás:** szerver game event (megbízható) · **Alapértelmezés:** bekapcsolva, warn, MEDIUM
 * **Mit észlel:** Túl sok indított lövedék (startProjectileEvent) vagy tiltott fegyverből indított lövedék.
-* **Paraméterek:** `maxPerWindow` = 25; `windowSeconds` = 5 s
+* **Paraméterek:** `banAlone` = false; `maxPerWindow` = 25; `windowSeconds` = 5 s
 
 ### `entities.ptfx` – Részecskeeffekt flood
 
 * **Forrás:** szerver game event (megbízható) · **Alapértelmezés:** bekapcsolva, warn, MEDIUM
 * **Mit észlel:** Túl sok hálózati részecskeeffekt (ptFxEvent) rövid idő alatt.
-* **Paraméterek:** `maxPerWindow` = 30; `maxScale` = 5; `windowSeconds` = 10 s
+* **Paraméterek:** `banAlone` = false; `maxPerWindow` = 30; `maxScale` = 5; `windowSeconds` = 10 s
 
 ### `entities.spawn` – Entity spawn védelem
 
 * **Forrás:** szerver game event (megbízható) · **Alapértelmezés:** bekapcsolva, kick, HIGH
 * **Mit észlel:** Kliens által létrehozott script entitások: tiltólistás modellek és entity flood blokkolása. Megbízható resource-ok, modellek és várt spawnok (ExpectEntity) engedélyezettek.
 * **Korlátok:** A spawnoló kliens resource-ot a GetEntityScript adja vissza, de ez nem mindig ismert. A legerősebb védelem a sv_entityLockdown convar (lásd dokumentáció).
-* **Paraméterek:** `blacklistedModels` = prop_beach_fire, prop_gas_tank_01a, prop_fnclink_05crnr1, p_crahsed_heli_s, prop_rock_4_big2, prop_fire_hydrant_1, …; `maxObjectsPerWindow` = 40; `maxPedsPerWindow` = 10; `maxVehiclesPerWindow` = 6; `windowSeconds` = 10 s
-
-### `events.honeypot` – Csapda eventek
-
-* **Forrás:** szerver game event (megbízható) · **Alapértelmezés:** bekapcsolva, ban, CRITICAL
-* **Mit észlel:** Olyan szerver eventek, amelyeket egyetlen legitim kliens sem hív (pl. a szervereden NEM telepített, ismert sérülékeny scriptek event nevei).
-* **Korlátok:** Csak olyan eventnevet adj meg, ami biztosan nem létezik a szervereden – különben a valódi játékosokat is jelezné. Indításkor a futó resource-okkal ütköző nevek kimaradnak.
-* **Paraméterek:** `events` = (üres)
-
-### `events.reported` – Más resource által jelentett gyanú
-
-* **Forrás:** szerver game event (megbízható) · **Alapértelmezés:** bekapcsolva, warn, MEDIUM
-* **Mit észlel:** Más szerver scriptek a ReportSuspicious exporttal jelezhetnek (pl. validálatlan vásárlás).
-* **Korlátok:** A jelzés minősége a jelentő scripten múlik.
-
-### `events.spam` – Event spam
-
-* **Forrás:** szerver game event (megbízható) · **Alapértelmezés:** bekapcsolva, kick, MEDIUM
-* **Mit észlel:** Saját (MilcsoGuard) és a CheckEvent exporttal védett eventek rate limit túllépése.
-* **Korlátok:** A FiveM nem ad globális hookot más resource-ok net eventjeire; csak a CheckEvent-tel bekötött eventeket látja.
-* **Paraméterek:** `defaultLimit` = 20; `windowSeconds` = 10 s
+* **Paraméterek:** `banAlone` = false; `blacklistedModels` = prop_beach_fire, prop_gas_tank_01a, prop_fnclink_05crnr1, p_crahsed_heli_s, prop_rock_4_big2, prop_fire_hydrant_1, stt_prop_stunt_soccer_ball, hei_prop_carrier_jet, apa_mp_apa_yacht, p_spinning_anus_s, blimp, blimp2, blimp3, cargoplane, jet, titan, avenger, khanjali, rhino, hydra, lazer, oppressor2; `maxObjectsPerWindow` = 40; `maxPedsPerWindow` = 10; `maxVehiclesPerWindow` = 6; `windowSeconds` = 10 s
 
 ### `economy.transactions` – Gyanús tranzakciók
 
 * **Forrás:** szerver game event (megbízható) · **Alapértelmezés:** bekapcsolva, log, MEDIUM
 * **Mit észlel:** Nagy összegű pénzjóváírás vagy rövid idő alatti összesített pénzbeáramlás (ESX/QBCore), nagy mennyiségű item létrehozása (ox_inventory) naplózása.
 * **Korlátok:** A pénzeventek nem mondják meg, melyik script adta a pénzt; ox_inventory createItem-nél a hívó resource ismert.
-* **Paraméterek:** `itemCount` = 500; `singleAmount` = 500000; `windowAmount` = 2000000; `windowMinutes` = 10 perc
+* **Paraméterek:** `banAlone` = false; `itemCount` = 500; `singleAmount` = 500000; `windowAmount` = 2000000; `windowMinutes` = 10 perc
+
+### `events.honeypot` – Csapda eventek
+
+* **Forrás:** szerver game event (megbízható) · **Alapértelmezés:** bekapcsolva, ban, CRITICAL
+* **Mit észlel:** Olyan szerver eventek, amelyeket egyetlen legitim kliens sem hív (pl. a szervereden NEM telepített, ismert sérülékeny scriptek event nevei).
+* **Korlátok:** Csak olyan eventnevet adj meg, ami biztosan nem létezik a szervereden – különben a valódi játékosokat is jelezné. Indításkor a futó resource-okkal ütköző nevek kimaradnak.
+* **Paraméterek:** `banAlone` = false; `events` = (üres)
+
+### `events.reported` – Más resource által jelentett gyanú
+
+* **Forrás:** szerver game event (megbízható) · **Alapértelmezés:** bekapcsolva, warn, MEDIUM
+* **Mit észlel:** Más szerver scriptek a ReportSuspicious exporttal jelezhetnek (pl. validálatlan vásárlás).
+* **Korlátok:** A jelzés minősége a jelentő scripten múlik.
+* **Paraméterek:** `banAlone` = false
+
+### `events.spam` – Event spam
+
+* **Forrás:** szerver game event (megbízható) · **Alapértelmezés:** bekapcsolva, kick, MEDIUM
+* **Mit észlel:** Saját (MilcsoGuard) és a CheckEvent exporttal védett eventek rate limit túllépése.
+* **Korlátok:** A FiveM nem ad globális hookot más resource-ok net eventjeire; csak a CheckEvent-tel bekötött eventeket látja.
+* **Paraméterek:** `banAlone` = false; `defaultLimit` = 20; `windowSeconds` = 10 s
 
 ### `resources.monitor` – Resource felügyelet
 
 * **Forrás:** szerver · **Alapértelmezés:** bekapcsolva, log, HIGH
 * **Mit észlel:** Kritikus resource-ok leállása, a MilcsoGuard konfigurációs fájl futás közbeni megváltozása.
 * **Korlátok:** Szerveroldali felügyelet; a kliensen futó resource-ok állapotát a kliens jelzései adják.
-* **Paraméterek:** `critical` = (üres)
+* **Paraméterek:** `banAlone` = false; `critical` = (üres)
 
 ### `client.heartbeat` – Kliens heartbeat
 

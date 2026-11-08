@@ -27,7 +27,7 @@ export interface Ban {
 }
 
 export interface Replay {
-  id: string; player_id: string | null; player_name: string; kind: 'ban' | 'manual'; status: 'requested' | 'uploading' | 'ready' | 'failed';
+  id: string; player_id: string | null; player_name: string; kind: 'ban' | 'manual' | 'detection'; detection_id: string | null; detection_type: string | null; status: 'requested' | 'uploading' | 'ready' | 'failed';
   error: string | null; reason: string; ban_id: string | null; ban_code: string | null; requested_by_label: string; mime: string;
   width: number | null; height: number | null; fps: number | null; duration_ms: number; size_bytes: number; part_count: number;
   created_at: string; completed_at: string | null;
@@ -42,6 +42,7 @@ export interface WhitelistEntry { id: string; kind: 'player' | 'resource' | 'mod
 export interface AuditEntry { id: number; actor_type: string; actor_label: string; action: string; target_type: string | null; target_id: string | null; details: Record<string, unknown>; ip: string | null; created_at: string }
 
 export interface Role { id: string; key: string; name: string; level: number; is_system: boolean; server_id: string | null; permissions: string[]; assignable: boolean }
+export interface GameAdmin { id: string; identifier: string; name: string; note: string; role_id: string; role_key: string; role_name: string; level: number; created_by_label: string; created_at: string; manageable: boolean }
 export interface Member { user_id: string; username: string; email?: string; totp_enabled: boolean; last_login_at: string | null; role_id: string; role_key: string; role_name: string; level: number; identifiers: string[]; manageable: boolean }
 
 export interface ParamSpec { type: 'number' | 'integer' | 'boolean' | 'enum' | 'list'; label: string; unit?: string; min?: number; max?: number; values?: string[]; maxItems?: number; default: unknown }

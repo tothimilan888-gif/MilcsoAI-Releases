@@ -18,6 +18,12 @@ A FiveM resource és a backend **együtt** adandó ki (azonos verziószám, `fxm
 4. FiveM resource: cseréld le a `milcsoguard` mappát, **a saját `config/config.lua`-dat tartsd meg** (vesd össze az újjal – új kulcsok lehetnek), majd `restart milcsoguard`. A helyi ban-gyorsítótár és a kimenő sor KVP-ben van, a restart túléli.
 5. Ellenőrzés: *Rendszerállapot* → resource verzió, séma, heartbeat; `milcsoguard status`.
 
+## 1.1 → 1.2 (detektálás-javítások, license admin, videós bizonyíték)
+
+* Backend: a `003_game_admins` és `004_detection_replays` migráció induláskor automatikusan lefut. Meglévő adat nem változik.
+* Resource: cseréld a mappát; a saját `config.lua`-dba másold át a `Config.Replay` új kulcsait (`onDetection`, `detectionMinSeverity`, `detectionCooldownSeconds`).
+* **Viselkedésváltozás:** a noclip csak a sprint feletti sebességnél / emelkedésnél / tartósan kikapcsolt ütközésnél jelez (korábban a futás is jelezhetett); a teleport gyalog már 50 m/mp felett jelez (korábban 120 m), zuhanás nem számít; új `weapons.rapidfire` modul; a tiltólistás robbanás perdöntő; minden szerveroldali modulnál új `banAlone` kapcsoló (alapból ki). Ha a weben **átírtad** a robbanás-tiltólistát, a 45-ös és 61-es (robbanólövedék) típust kézzel add hozzá.
+
 ## 1.0 → 1.1 (POV visszajátszás, admin eszközök)
 
 * Backend: a `002_replays` migráció induláskor automatikusan lefut (két új tábla, a `replay_request` parancstípus, `replaysDays` megőrzés = 30 nap). A meglévő adat nem változik. Új, opcionális env: `REPLAY_STORAGE_LIMIT_MB` (alap 1024).

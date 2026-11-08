@@ -14,11 +14,13 @@ Schema.modules = {
     -- ------------------------------------------------------------------ movement
     ['movement.teleport'] = {
         label = 'Teleport anomália', category = 'movement', source = 'server',
-        description = 'Két szerveroldali pozícióminta közötti, fizikailag lehetetlen elmozdulás.',
-        limitations = 'Kliensoldali scriptek (interior bejáratok, liftek) SetEntityCoords-szal legálisan teleportálhatnak; ezeket a szerver nem tudja megkülönböztetni. Ezért alapból csak figyelmeztet; használd a teleportZones listát és az AllowMovement exportot.',
+        description = 'Két szerveroldali pozícióminta közötti, fizikailag lehetetlen elmozdulás (vízszintesen, vagy felfelé). Zuhanás nem számít.',
+        limitations = 'Kliensoldali scriptek (interior bejáratok, liftek, házak) SetEntityCoords-szal legálisan teleportálhatnak; ezeket a szerver nem tudja megkülönböztetni. Használd a teleportZones listát és az AllowMovement exportot. Az "önmagában is bannolhat" csak a HIGH távolság feletti teleportokra hat.',
         defaults = { enabled = true, action = 'warn', severity = 'MEDIUM' },
         params = {
-            maxDistanceOnFoot = num('Max. elmozdulás gyalog / minta', 30, 2000, 120, 'm'),
+            maxDistanceOnFoot = num('Max. vízszintes elmozdulás gyalog / mp', 20, 2000, 50, 'm'),
+            maxDistanceFalling = num('Max. vízszintes elmozdulás zuhanás / ejtőernyő közben / mp', 30, 2000, 90, 'm'),
+            maxRiseOnFoot = num('Max. emelkedés gyalog / mp', 5, 500, 25, 'm'),
             maxDistanceInVehicle = num('Max. elmozdulás járműben / minta', 50, 5000, 400, 'm'),
             highSeverityDistance = num('E felett HIGH súlyosság', 200, 20000, 1500, 'm'),
             ignoreZones = bool('teleportZones figyelembevétele', true),
@@ -37,12 +39,14 @@ Schema.modules = {
     },
     ['movement.noclip'] = {
         label = 'Noclip / fly', category = 'movement', source = 'server',
-        description = 'Gyalogos elmozdulás, miközben a szinkronizált sebességvektor közel nulla, vagy a ped ütközése ki van kapcsolva.',
-        limitations = 'Heurisztika: a szinkronizált sebesség hálózati késéssel frissül, attach-olt (pl. hordozott) pedeknél hamis pozitív lehet – ezeket kiszűri.',
+        description = 'Gyalogosan, zuhanás nélkül a sprintnél jóval gyorsabb haladás (miközben a szinkronizált sebesség alacsony), tartós emelkedés jármű nélkül (repülés), vagy gyors mozgás kikapcsolt ütközéssel.',
+        limitations = 'Heurisztika. A szerver a gyalogos pedek sebességvektorát gyakran nullának látja, ezért a küszöb a sprint (~7-8 m/s) és a sprintgyorsító scriptek felett van. Attach-olt (hordozott) és zuhanó pedeket kiszűri.',
         defaults = { enabled = true, action = 'warn', severity = 'HIGH' },
         params = {
-            minDisplacementSpeed = num('Min. elmozdulási sebesség', 2, 50, 6, 'm/s'),
+            minDisplacementSpeed = num('Min. vízszintes sebesség (sprint felett)', 2, 50, 12, 'm/s'),
             maxReportedVelocity = num('Max. jelentett sebesség', 0.1, 10, 1.0, 'm/s'),
+            risingSpeed = num('Tartós emelkedés jármű nélkül', 2, 50, 4, 'm/s'),
+            collisionMinSpeed = num('Kikapcsolt ütközésnél min. sebesség', 2, 50, 4, 'm/s'),
             consecutive = int('Egymást követő minták', 1, 20, 3),
             flagCollisionDisabled = bool('Kikapcsolt ütközés jelzése', true),
         },
@@ -146,14 +150,28 @@ Schema.modules = {
             cancelViolations = bool('Szabálysértő sebzés blokkolása', true),
         },
     },
+    ['weapons.rapidfire'] = {
+        label = 'Rapid fire', category = 'weapons', source = 'event',
+        description = 'Egy fegyverrel a fegyver tűzgyorsaságánál jóval sűrűbb találat (fegyverosztályonként), ismételten.',
+        limitations = 'A szerver a találatokat látja, nem a lövéseket. Sörétesek (egy lövés = sok sörét), minigun, gránátvetők és addon fegyverek nincsenek vizsgálva. Laggolás után a találatok egyszerre érkezhetnek, ezért több túllépést vár.',
+        defaults = { enabled = true, action = 'warn', severity = 'HIGH' },
+        params = {
+            semiMaxPerSecond = num('Félautomata pisztoly max. találat / mp', 3, 60, 10),
+            autoMaxPerSecond = num('Automata fegyver max. találat / mp', 5, 100, 22),
+            sniperMaxPerSecond = num('Mesterlövész max. találat / mp', 1, 30, 4),
+            windowSeconds = int('Mérési ablak', 1, 10, 2, 's'),
+            violations = int('Túllépés 30 mp-en belül, ami jelez', 1, 20, 2),
+            cancelViolations = bool('Túllépő találatok blokkolása', true),
+        },
+    },
     -- ------------------------------------------------------------------ entities / explosions
     ['explosions.filter'] = {
         label = 'Robbanásszűrő', category = 'entities', source = 'event',
-        description = 'Tiltott típusú, láthatatlan-néma, felnagyított vagy túl sűrű robbanások blokkolása.',
+        description = 'Tiltott típusú, láthatatlan-néma, felnagyított vagy túl sűrű robbanások blokkolása. A tiltólistás típus perdöntő: egyedül is bannolhat. Alapból tiltva: 29/37 léghajó, 45/61 robbanólövedék, 59 orbitális ágyú, 70 raygun.',
         limitations = 'A járműrobbanások tulajdonosa lehet a jármű, nem a játékos – ezért a tulajdonos-egyezést nem vizsgálja.',
         defaults = { enabled = true, action = 'kick', severity = 'HIGH' },
         params = {
-            blacklistedTypes = list('Tiltott robbanástípusok (ID)', 100, { '29', '37', '59', '70' }),
+            blacklistedTypes = list('Tiltott robbanástípusok (ID)', 100, { '29', '37', '45', '59', '61', '70' }),
             maxPerWindow = int('Max. robbanás / ablak', 1, 200, 6),
             windowSeconds = int('Ablak', 1, 120, 10, 's'),
             maxDamageScale = num('Max. damageScale', 1, 10, 1.5),
@@ -259,6 +277,15 @@ Schema.modules = {
         params = {},
     },
 }
+
+-- Every server-side module may be allowed to ban on its own detection (no second, independent
+-- detection needed). Off by default: a single heuristic can be wrong. Client-side modules never get
+-- this switch – a forgeable client signal must not be able to ban anyone.
+for _, spec in pairs(Schema.modules) do
+    if spec.source ~= 'client' and spec.params.banAlone == nil then
+        spec.params.banAlone = bool('Önmagában is bannolhat (2. független jelzés nélkül)', false)
+    end
+end
 
 Schema.risk = {
     halfLifeMinutes = num('Kockázat felezési idő', 1, 1440, 30, 'perc'),

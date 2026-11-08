@@ -212,8 +212,20 @@ RegisterCommand('milcsoguard', function(src, args)
     elseif cmd == 'unban' and args[2] then
         local ok = MG.Bans.revoke(args[2], table.concat(args, ' ', 3) ~= '' and table.concat(args, ' ', 3) or 'console unban', MG.Permissions.actor(0))
         print(ok and '[MilcsoGuard] revoked' or '[MilcsoGuard] ban not in local cache (revoke queued if it exists remotely)')
+    elseif cmd == 'addadmin' and args[2] and args[3] then
+        -- milcsoguard addadmin <serverId|license:...> <role> [name]
+        Citizen.CreateThread(function()
+            local r = MG.Admin.addGameAdmin(0, 100, args[2], args[3], table.concat(args, ' ', 4))
+            print(r.ok and ('[MilcsoGuard] admin added: %s -> %s'):format(r.data.admin.identifier, args[3]) or ('[MilcsoGuard] failed: ' .. tostring(r.error)))
+        end)
+    elseif cmd == 'removeadmin' and args[2] then
+        Citizen.CreateThread(function()
+            local r = MG.Admin.removeGameAdmin(0, 100, args[2])
+            print(r.ok and ('[MilcsoGuard] admin removed: ' .. tostring(r.data.removed)) or ('[MilcsoGuard] failed: ' .. tostring(r.error)))
+        end)
     else
-        print('usage: milcsoguard status | sync | unban <banId> [reason]')
+        print('usage: milcsoguard status | sync | unban <banId> [reason] | addadmin <serverId|license:...> <role> [name] | removeadmin <serverId|license:...>')
+        print('roles: owner, developer, server_manager, admin_controller, administrator, moderator, viewer')
     end
 end, true)
 

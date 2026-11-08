@@ -29,6 +29,7 @@ import apiKeyRoutes from './routes/apikeys.js';
 import integrationRoutes from './routes/integrations.js';
 import streamRoutes from './routes/stream.js';
 import replayRoutes from './routes/replays.js';
+import gameAdminRoutes from './routes/gameAdmins.js';
 import gameRoutes from './routes/game.js';
 import healthRoutes from './routes/health.js';
 
@@ -147,6 +148,7 @@ export async function buildApp(opts: BuildOptions): Promise<FastifyInstance> {
       await api.register(integrationRoutes);
       await api.register(streamRoutes);
       await api.register(replayRoutes);
+      await api.register(gameAdminRoutes);
       await api.register(gameRoutes, { prefix: '/game' });
     },
     { prefix: '/api/v1' },

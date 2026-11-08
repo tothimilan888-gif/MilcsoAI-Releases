@@ -15,10 +15,11 @@ export default async function replayRoutes(app: FastifyInstance) {
       z.object({
         page: z.coerce.number().int().min(1).default(1),
         pageSize: z.coerce.number().int().min(1).max(100).default(25),
-        kind: z.enum(['ban', 'manual']).optional(),
+        kind: z.enum(['ban', 'manual', 'detection']).optional(),
         status: z.enum(['requested', 'uploading', 'ready', 'failed']).optional(),
         playerId: z.uuid().optional(),
         banId: z.uuid().optional(),
+        detectionId: z.uuid().optional(),
       }),
       req.query,
     );
@@ -27,6 +28,7 @@ export default async function replayRoutes(app: FastifyInstance) {
     if (q.status) w.add('r.status = ?', q.status);
     if (q.playerId) w.add('r.player_id = ?', q.playerId);
     if (q.banId) w.add('r.ban_id = ?', q.banId);
+    if (q.detectionId) w.add('r.detection_id = ?', q.detectionId);
     const total = (await app.db.query<{ n: number }>(`SELECT count(*)::int AS n FROM replays r ${w}`, w.params)).rows[0]!.n;
     const limit = w.next(q.pageSize);
     const offset = w.next((q.page - 1) * q.pageSize);

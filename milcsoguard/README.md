@@ -16,7 +16,7 @@ Saját márkájú, moduláris FiveM anticheat: **szerveroldali döntéshozó res
 
 | Mappa | Tartalom |
 |---|---|
-| [`fivem/milcsoguard`](fivem/milcsoguard) | FiveM resource (Lua 5.4): 27 detektálási modul, risk engine, ban store, ESX/QBCore/ox_inventory bridge, NUI adminpanel (11 oldal: ban/kick/feloldás, offline ban, spectate, odamegyek/idehozom, fagyasztás, üzenet, visszajátszás kérése és lejátszása), POV felvevő |
+| [`fivem/milcsoguard`](fivem/milcsoguard) | FiveM resource (Lua 5.4): 28 detektálási modul, risk engine, ban store, ESX/QBCore/ox_inventory bridge, NUI adminpanel (11 oldal: ban/kick/feloldás, offline ban, spectate, odamegyek/idehozom, fagyasztás, üzenet, visszajátszás kérése és lejátszása), POV felvevő |
 | [`backend`](backend) | Node.js 22 + TypeScript + Fastify 5 + PostgreSQL: auth (session + CSRF + TOTP), RBAC, játék API, SSE, Discord riasztás, retention |
 | [`web`](web) | React 19 + TypeScript + Vite dashboard (sötét téma, reszponzív, élő frissítés) |
 | [`tests`](tests) | Lua tesztek FXServer mockkal, szerződésteszt élő backend ellen, Playwright e2e (NUI + web) |
@@ -54,13 +54,13 @@ Majd: dashboard → szerver létrehozása → API-kulcs → `server.cfg` (`set m
 
 | Csomag | Eredmény |
 |---|---|
-| Backend (Vitest, valódi PostgreSQL 16) | 79 / 79 ✅ |
-| Lua unit + integráció (FXServer mock, FiveM saját `json.lua`) | 104 / 104 ✅ |
-| Lua resource ↔ élő backend szerződésteszt | 7 / 7 ✅ |
+| Backend (Vitest, valódi PostgreSQL 16) | 88 / 88 ✅ |
+| Lua unit + integráció (FXServer mock, FiveM saját `json.lua`) | 126 / 126 ✅ |
+| Lua resource ↔ élő backend szerződésteszt | 9 / 9 ✅ |
 | NUI panel e2e (headless Chromium) | 22 / 22 ✅ |
-| NUI felvevő + új admin eszközök e2e (valódi MediaRecorder) | 36 / 36 ✅ |
-| Web dashboard e2e (élő backend) | 38 / 38 ✅ |
-| Web visszajátszás e2e (élő backend, valódi WebM) | 21 / 21 ✅ |
+| NUI felvevő + új admin eszközök e2e (valódi MediaRecorder) | 38 / 38 ✅ |
+| Web dashboard e2e (élő backend) | 42 / 42 ✅ |
+| Web visszajátszás e2e (élő backend, valódi WebM) | 22 / 22 ✅ |
 | Web unit | 3 / 3 ✅ |
 
 ## Amit őszintén tudni kell

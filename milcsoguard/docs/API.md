@@ -103,6 +103,14 @@ A ban a játékos **összes ismert azonosítóját** tiltja (IP soha). Ha egy ba
 | POST | `/servers/:serverId/integrations/discord/test` | `integrations.manage` |
 | GET | `/servers/:serverId/stream` | tag – Server-Sent Events, eseményenként jogosultság szerint szűrve |
 
+### Játékbeli adminok (license alapján)
+
+| Metódus | Útvonal | Jog |
+|---|---|---|
+| GET | `/servers/:serverId/game-admins` | `admins.view` |
+| POST | `/servers/:serverId/game-admins` `{identifier, roleId, name?, note?}` | `admins.manage` + eszkalációvédelem |
+| DELETE | `/servers/:serverId/game-admins/:id` | `admins.manage` (csak saját szint alatt) |
+
 ### POV visszajátszások
 
 | Metódus | Útvonal | Jog |
@@ -130,12 +138,14 @@ SSE események: `detection.created`, `detection.reviewed`, `ban.created`, `ban.r
 | POST | `/bans` | Játékon belüli / automatikus ban (`localId` idempotens, `ageSeconds` = sorban töltött idő) |
 | POST | `/bans/:banId/revoke` | Játékon belüli feloldás |
 | GET | `/config` | Felülírások + whitelist |
-| GET | `/commands`, POST `/commands/:id/ack` | Web → játék parancssor (kick, ban_sync, config_sync, announce_admins, replay_request) |
+| GET | `/commands`, POST `/commands/:id/ack` | Web → játék parancssor (kick, ban_sync, config_sync, announce_admins, replay_request, admin_refresh) |
 | POST | `/system-events` | Resource leállás, elutasított konfiguráció stb. |
-| POST | `/replays` `{id, kind: ban\|manual, banId?, banLocalId?, requestedBy?, …}` | Felvétel bejelentése (idempotens; a web által kért felvételt `uploading`-ra állítja). Kézi kérésnél `requestedBy` = in-game admin, auditálva |
+| POST | `/replays` `{id, kind: ban\|manual\|detection, banId?, banLocalId?, detectionLocalId?, requestedBy?, …}` | Felvétel bejelentése (idempotens; a web által kért felvételt `uploading`-ra állítja). Kézi kérésnél `requestedBy` = in-game admin, auditálva |
 | PUT | `/replays/:id/parts/:idx` `{durationMs, data: base64}` | Egy önálló WebM darab (≤ 4 MB, EBML fejléc kötelező, összesen ≤ 24 MB, tárhelykorlát → 507) |
 | POST | `/replays/:id/complete` `{status: ready\|failed, error?}` | Lezárás; darab nélkül mindig `failed` |
 | GET | `/admin/replays`, `/admin/replays/:id`, `/admin/replays/:id/parts/:idx` | Az in-game lejátszóhoz (base64) |
+| GET/POST | `/admin/game-admins`, `/admin/game-admins/remove` | License alapú adminok a panelből / konzolból (`actor`, `actorLevel`; a backend a kötött jogot is ellenőrzi) |
+| POST | `/admins/resolve` `{identifiers}` | Egy játékos aktuális backend jogai (`admin_refresh` parancs után) |
 | GET/POST/PUT | `/admin/*` | Az in-game panel adatai; minden módosító kérés `actor`-t küld, amit a backend auditál, és ha webes fiókhoz kötött, a webes szerepkör szerint is ellenőriz |
 
 ## Health

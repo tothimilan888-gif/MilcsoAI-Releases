@@ -182,13 +182,56 @@ describe('movement analysis', function()
             expect(#r).toBe(0)
         end
     end)
-    it('flags noclip: moving with zero synced velocity', function()
+    it('flags noclip: well above sprint speed with zero synced velocity', function()
         local streaks, found = {}, nil
         for i = 1, 3 do
-            local f = MG.Movement.analyze(s((i - 1) * 1000, (i - 1) * 10, 0, 50), s(i * 1000, i * 10, 0, 50), modules, streaks)
-            found = found or f[1]
+            for _, f in ipairs(MG.Movement.analyze(s((i - 1) * 1000, (i - 1) * 15, 0, 50), s(i * 1000, i * 15, 0, 50), modules, streaks)) do
+                if f.key == 'movement.noclip' then found = f end
+            end
         end
         expect(found.key).toBe('movement.noclip')
+        expect(found.evidence.reason).toBe('fast')
+    end)
+    -- Regression: the server often sees on-foot ped velocity as 0, so sprinting looked like noclip.
+    local function run(samples, mods)
+        local streaks, all = {}, {}
+        for i = 2, #samples do
+            for _, f in ipairs(MG.Movement.analyze(samples[i - 1], samples[i], mods or modules, streaks)) do all[#all + 1] = f end
+        end
+        return all
+    end
+    it('does not flag sprinting (even boosted) when the server reports zero velocity', function()
+        local sm = {}
+        for i = 0, 20 do sm[#sm + 1] = s(i * 1000, i * 10.5, 0, 30) end
+        expect(#run(sm)).toBe(0)
+    end)
+    it('does not flag walking with collision disabled by a script', function()
+        local sm = {}
+        for i = 0, 10 do sm[#sm + 1] = s(i * 1000, i * 1.6, 0, 30, { collisionDisabled = true }) end
+        expect(#run(sm)).toBe(0)
+    end)
+    it('flags flying upwards without a vehicle', function()
+        local sm = {}
+        for i = 0, 4 do sm[#sm + 1] = s(i * 1000, i * 2, 0, 30 + i * 6) end
+        local f = run(sm)
+        expect(f[1].key).toBe('movement.noclip')
+        expect(f[1].evidence.reason).toBe('rising')
+    end)
+    it('does not flag parachuting or skydiving (fast horizontal while falling)', function()
+        local sm = {}
+        for i = 0, 15 do sm[#sm + 1] = s(i * 1000, i * 25, 0, 800 - i * 20) end
+        expect(#run(sm)).toBe(0)
+    end)
+    it('does not count a fall from a cliff as a teleport', function()
+        expect(#MG.Movement.analyze(s(0, 0, 0, 300), s(1000, 5, 0, 240), modules, {})).toBe(0)
+    end)
+    it('flags a short teleport to a nearby player', function()
+        local f = MG.Movement.analyze(s(0, 0, 0, 30), s(1000, 70, 0, 30), modules, {})
+        expect(f[1].key).toBe('movement.teleport')
+        expect(f[1].banAloneEligible).toBe(false)
+        local far = MG.Movement.analyze(s(0, 0, 0, 30), s(1000, 2400, 0, 30), modules, {})
+        expect(far[1].severity).toBe('HIGH')
+        expect(far[1].banAloneEligible).toBe(true)
     end)
     it('does not flag attached peds (carried / cuffed)', function()
         local streaks = {}
@@ -201,6 +244,34 @@ describe('movement analysis', function()
         expect(#MG.Movement.analyze(s(0, 0, 0, 0), s(1000, 5000, 0, 0, { bucket = 3 }), modules, {})).toBe(0)
         expect(#MG.Movement.analyze(s(0, 0, 0, 0, { dead = true }), s(1000, 5000, 0, 0), modules, {})).toBe(0)
         expect(#MG.Movement.analyze(s(0, 0, 0, 0), s(9000, 5000, 0, 0), modules, {})).toBe(0)
+    end)
+    it('rapid fire: needs repeated over-limit windows, ignores shotguns and lag bursts', function()
+        local params = MG.Schema.build(nil, nil)['weapons.rapidfire'].params
+        local pistol = MG.Util.joaat('WEAPON_PISTOL')
+        local st, res = {}, {}
+        -- legit: 7 shots/s for 10 s
+        for i = 0, 70 do local r = MG.WeaponChecks.evaluateRapidFire(st, pistol, i * 143, params); if r then res[#res + 1] = r end end
+        expect(#res).toBe(0)
+        -- one lag burst (25 hits at once) only blocks, it does not report
+        local st2 = {}
+        local r
+        for i = 1, 25 do r = MG.WeaponChecks.evaluateRapidFire(st2, pistol, 5000, params) or r end
+        expect(r.blockOnly).toBe(true)
+        -- a rapid-fire cheat: 40 hits/s, sustained
+        local st3, rep = {}, nil
+        for i = 0, 160 do local x = MG.WeaponChecks.evaluateRapidFire(st3, pistol, i * 25, params); if x and not x.blockOnly then rep = rep or x end end
+        expect(rep.weapon).toBe('WEAPON_PISTOL')
+        expect(rep.limit).toBe(10)
+        -- shotguns are never checked (one shot = many pellets)
+        local sg = {}
+        for i = 1, 200 do expect(MG.WeaponChecks.evaluateRapidFire(sg, MG.Util.joaat('WEAPON_PUMPSHOTGUN'), i, params)).toBeNil() end
+    end)
+    it('banAlone exists for server modules only', function()
+        local mods = MG.Schema.build(nil, nil)
+        expect(mods['movement.noclip'].params.banAlone).toBe(false)
+        expect(mods['client.heartbeat'].params.banAlone).toBeNil()
+        local _, issues = MG.Schema.validate({ modules = { ['client.heartbeat'] = { params = { banAlone = true } } } })
+        expect(#issues > 0).toBe(true)
     end)
     it('flags excessive vehicle speed for the driver only', function()
         local car = { vehicle = 5, vehType = 'automobile', driver = true, vehSpeed = 140 }

@@ -435,8 +435,8 @@
       <div class="notice">POV visszajátszás: a játékos saját nézete a ban (vagy a kérés) előtti utolsó ~15 másodpercből. A kliens rögzíti, ezért egy csaló blokkolhatja – a hiányzó felvétel önmagában nem bizonyíték. Minden megnyitás auditnaplóba kerül.</div>
       <div class="card" style="padding:4px 6px">${pg.items.length ? html`<table><thead><tr><th>Idő</th><th>Játékos</th><th>Típus</th><th>Ok / ban</th><th>Hossz</th><th>Állapot</th><th>Kérte</th><th></th></tr></thead><tbody>
         ${pg.items.map((x, i) => html`<tr><td class="small">${fmtTime(x.created_at)}</td><td><b>${x.player_name || '?'}</b></td>
-          <td>${x.kind === 'ban' ? html`<span class="badge sev-HIGH">ban</span>` : html`<span class="badge neutral">kézi</span>`}</td>
-          <td class="small">${x.reason}${x.ban_code ? html`<div class="mono muted">${x.ban_code}</div>` : ''}</td>
+          <td>${x.kind === 'ban' ? html`<span class="badge sev-HIGH">ban</span>` : x.kind === 'detection' ? html`<span class="badge sev-MEDIUM">detektálás</span>` : html`<span class="badge neutral">kézi</span>`}</td>
+          <td class="small">${x.detection_type || x.reason}${x.ban_code ? html`<div class="mono muted">${x.ban_code}</div>` : ''}</td>
           <td>${x.duration_ms ? `${Math.round(x.duration_ms / 1000)} mp` : '–'}</td>
           <td>${x.status === 'ready' ? html`<span class="badge ok">kész</span>` : x.status === 'failed' ? html`<span class="badge sev-HIGH" title="${x.error || ''}">sikertelen</span><div class="muted small">${x.error || ''}</div>` : html`<span class="badge sev-MEDIUM">${REPLAY_STATUS[x.status] || x.status}</span>`}</td>
           <td class="small">${x.requested_by_label}</td>
@@ -494,7 +494,7 @@
     const m = $('#modal');
     m.innerHTML = render(html`<div class="box wide">
       <h3>Visszajátszás – ${rep.player_name || '?'}</h3>
-      <div class="muted small">${rep.kind === 'ban' ? 'Ban előtti felvétel' : 'Kézi kérés'} · ${fmtTime(rep.created_at)} · ${Math.round((rep.duration_ms || 0) / 1000)} mp · ${rep.reason}</div>
+      <div class="muted small">${rep.kind === 'ban' ? 'Ban előtti felvétel' : rep.kind === 'detection' ? `Detektálás bizonyítéka (${rep.detection_type || rep.reason})` : 'Kézi kérés'} · ${fmtTime(rep.created_at)} · ${Math.round((rep.duration_ms || 0) / 1000)} mp · ${rep.reason}</div>
       <div class="video-wrap"><video id="rv" controls muted playsinline></video><div id="rvStatus" class="video-status">Betöltés…</div></div>
       <div class="row"><span class="muted small" id="rvPart" style="margin-right:auto"></span><button class="btn" id="rvFlip" title="Csak a megjelenítést fordítja (régi, fejjel lefelé rögzített felvételekhez)">Kép fordítása</button><button class="btn" id="rvRestart">Elejétől</button><button class="btn primary" id="rvClose">Bezárás</button></div>
     </div>`);
@@ -554,12 +554,39 @@
     const r = await api('admins.list');
     if (!r.ok) return setContent(errorBox(r.error));
     const d = r.data;
+    const myLevel = (state.info || {}).level || 0;
+    const assignable = d.roles.filter((x) => myLevel >= 100 || x.level < myLevel);
+    const gameAdmins = d.gameAdmins;
     setContent(html`<div class="grid two">
       <div class="card"><h2>Online adminok</h2>${d.online.length ? html`<table><thead><tr><th>ID</th><th>Név</th><th>Szerepkör</th><th>Forrás</th></tr></thead><tbody>${d.online.map((a) => html`<tr><td>${a.id}</td><td>${a.name}</td><td><span class="badge accent">${a.role}</span></td><td>${a.source}</td></tr>`)}</tbody></table>` : empty('Nincs online admin.')}</div>
       <div class="card"><h2>Szerepkör hierarchia</h2><table><tbody>${d.roles.map((x) => html`<tr><td>${x.label}</td><td class="muted">szint ${x.level}</td></tr>`)}</tbody></table>
-        <p class="muted small">Adminok hozzáadása és szerepkörök módosítása a webes dashboardon történik (eszkalációvédelemmel). ACE-alapú jogok: <span class="mono">add_ace group.admin milcsoguard.role.administrator allow</span></p></div>
+        <p class="muted small">ACE-alapú jog továbbra is működik: <span class="mono">add_ace identifier.license:… milcsoguard.role.administrator allow</span></p></div>
+    </div>
+    <div class="card" style="margin-top:14px"><h2>Játékbeli adminok (license alapján)</h2>
+      ${can('admins.manage') && gameAdmins ? html`<div class="toolbar wrap">
+        <input id="gaTarget" placeholder="Online ID (pl. 12) vagy license:…" style="width:260px">
+        <select id="gaRole">${assignable.map((x) => html`<option value="${x.key}">${x.label} (szint ${x.level})</option>`)}</select>
+        <input id="gaName" placeholder="Név (opcionális)" style="width:160px"><input id="gaNote" placeholder="Megjegyzés" style="width:180px">
+        <button class="btn primary" id="gaAdd" ${assignable.length ? '' : raw('disabled')}>Admin jog adása</button></div>
+        <div class="muted small" style="margin-bottom:8px">Nem kell hozzá webes fiók. A jog azonnal érvényes, ha a játékos online, különben a következő csatlakozáskor. Csak a saját szinted alatti szerepkört adhatod.</div>` : ''}
+      ${gameAdmins ? (gameAdmins.length ? html`<table><thead><tr><th>Név</th><th>Azonosító</th><th>Szerepkör</th><th>Adta</th><th>Megjegyzés</th><th></th></tr></thead><tbody>${gameAdmins.map((g) => html`<tr><td>${g.name || '–'}</td><td class="mono small">${g.identifier}</td><td><span class="badge accent">${g.role_name}</span></td><td class="small">${g.created_by_label}</td><td class="small">${g.note}</td>
+        <td class="actions">${can('admins.manage') && (myLevel >= 100 || g.level < myLevel) ? html`<button class="btn sm danger" data-garm="${g.identifier}">Elvétel</button>` : ''}</td></tr>`)}</tbody></table>` : empty('Még nincs license alapú admin.')) : html`<div class="notice">Backend nem elérhető.</div>`}
     </div>
     <div class="card" style="margin-top:14px"><h2>Webes fiókok (backend)</h2>${d.members ? (d.members.length ? html`<table><thead><tr><th>Felhasználó</th><th>Szerepkör</th><th>Kötött azonosítók</th><th>Utolsó belépés</th></tr></thead><tbody>${d.members.map((m) => html`<tr><td>${m.username}</td><td>${m.role_name}</td><td class="mono small">${(m.identifiers || []).join(', ') || '–'}</td><td>${fmtTime(m.last_login_at)}</td></tr>`)}</tbody></table>` : empty('Nincs tag.')) : html`<div class="notice">Backend nem elérhető.</div>`}</div>`);
+    if ($('#gaAdd')) $('#gaAdd').onclick = async () => {
+      const rr = await api('admins.add', { target: $('#gaTarget').value.trim(), role: $('#gaRole').value, name: $('#gaName').value.trim(), note: $('#gaNote').value.trim() });
+      toast(rr.ok ? `Admin jog megadva: ${rr.data.admin.identifier}` : rr.error, rr.ok ? 'success' : 'error');
+      if (rr.ok) go('admins');
+    };
+    document.querySelectorAll('[data-garm]').forEach((b) => {
+      b.onclick = async () => {
+        const res = await modal({ title: 'Admin jog elvétele', text: b.dataset.garm, confirmLabel: 'Elvétel', danger: true, reason: false });
+        if (!res) return;
+        const rr = await api('admins.remove', { identifier: b.dataset.garm });
+        toast(rr.ok ? 'Admin jog elvéve' : rr.error, rr.ok ? 'success' : 'error');
+        if (rr.ok) go('admins');
+      };
+    });
   };
 
   VIEWS.logs = async function (arg) {

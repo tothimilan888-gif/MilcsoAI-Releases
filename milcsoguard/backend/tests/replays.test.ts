@@ -187,3 +187,33 @@ describe('storage and retention', () => {
     expect(String(res.headers['content-security-policy'])).toContain("media-src 'self' blob:");
   });
 });
+
+describe('replays as detection evidence', () => {
+  const det = (localId: string) => ({
+    localId, type: 'movement.noclip', module: 'movement', severity: 'HIGH', riskScore: 40, source: 'server', action: 'warn', actionResult: '',
+    netId: 7, playerName: 'Cheater', identifiers: [LICENSE_A], evidence: { reason: 'fast' }, occurredAt: new Date().toISOString(),
+  });
+
+  it('links in both orders (replay first or detection first) and shows on the detection', async () => {
+    // replay announced before the queued detection reaches the backend
+    const r1 = crypto.randomUUID();
+    await g('POST', '/replays', { id: r1, kind: 'detection', playerName: 'Cheater', identifiers: [LICENSE_A], reason: 'movement.noclip', detectionLocalId: 'det-aaaa1111bbbb' });
+    await g('PUT', `/replays/${r1}/parts/0`, { durationMs: 5000, data: webm(500).toString('base64') });
+    await g('POST', `/replays/${r1}/complete`, { status: 'ready' });
+    const ing = await g('POST', '/detections', { detections: [det('det-aaaa1111bbbb')] });
+    const detId = ing.json().ids['det-aaaa1111bbbb'];
+    // detection first, replay later
+    await g('POST', '/detections', { detections: [det('det-cccc2222dddd')] });
+    const r2 = crypto.randomUUID();
+    await g('POST', '/replays', { id: r2, kind: 'detection', identifiers: [LICENSE_A], detectionLocalId: 'det-cccc2222dddd' });
+    const det2 = (await ctx.db.query("SELECT id FROM detections WHERE local_id = 'det-cccc2222dddd'")).rows[0].id;
+    expect((await ctx.db.query('SELECT detection_id FROM replays WHERE id = $1', [r2])).rows[0].detection_id).toBe(det2);
+
+    const detail = await owner.req('GET', `/api/v1/servers/${sid}/detections/${detId}`);
+    expect(detail.json().replays.map((r: { id: string }) => r.id)).toEqual([r1]);
+    expect(detail.json().replays[0]).toMatchObject({ kind: 'detection', detection_type: 'movement.noclip', requested_by_label: 'anticheat:detection' });
+    // viewers without replays.view get no replay list
+    expect((await viewer.req('GET', `/api/v1/servers/${sid}/detections/${detId}`)).json().replays).toEqual([]);
+    expect((await owner.req('GET', `/api/v1/servers/${sid}/replays?kind=detection`)).json().total).toBe(2);
+  });
+});

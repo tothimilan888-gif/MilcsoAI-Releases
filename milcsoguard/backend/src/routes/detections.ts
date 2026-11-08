@@ -4,6 +4,7 @@ import { notFound } from '../lib/errors.js';
 import { maskIdentifier } from '../lib/identifiers.js';
 import { parse } from '../lib/validate.js';
 import { publish } from '../lib/realtime.js';
+import { REPLAY_COLUMNS } from '../services/replays.js';
 import { DETECTION_COLUMNS, detectionListQuery, listDetections, reviewDetection, type DetectionRow } from '../services/detections.js';
 
 export function presentDetection(d: DetectionRow, showIdentifiers: boolean) {
@@ -25,7 +26,10 @@ export default async function detectionRoutes(app: FastifyInstance) {
     const bans = (
       await app.db.query('SELECT b.id, b.public_code, b.status, b.reason FROM ban_detections bd JOIN bans b ON b.id = bd.ban_id WHERE bd.detection_id = $1', [id])
     ).rows;
-    return { detection: presentDetection(row, req.access!.permissions.has('players.identifiers')), bans };
+    const replays = req.access!.permissions.has('replays.view')
+      ? (await app.db.query(`SELECT ${REPLAY_COLUMNS} FROM replays r WHERE r.detection_id = $1 ORDER BY r.created_at`, [id])).rows
+      : [];
+    return { detection: presentDetection(row, req.access!.permissions.has('players.identifiers')), bans, replays };
   });
 
   app.post('/servers/:serverId/detections/:id/review', { preHandler: app.requireServer('detections.review') }, async (req) => {

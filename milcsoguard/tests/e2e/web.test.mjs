@@ -155,7 +155,7 @@ check(hb2.status === 401, 'revoked API key is rejected immediately');
 // ------------------------------------------------------------ admin add (temporary password)
 await page.goto(`${BASE}/s/${sid}/admins`);
 await settle();
-await page.click('text=+ Admin hozzáadása');
+await page.click('text=+ Webes admin (e-mail)');
 const uname = `mod_${stamp}`;
 await page.fill('.modal input[type="email"]', `${uname}@e2e.local`);
 await page.fill('.modal input >> nth=1', uname);
@@ -166,6 +166,23 @@ check(true, 'new admin gets a one-time temporary password');
 await page.click('text=Elmentettem');
 await page.waitForSelector(`td:has-text("${uname}")`);
 await page.screenshot({ path: path.join(OUT, 'web-admins-after.png'), fullPage: true });
+
+// license-based admin: no e-mail / web account needed
+const lic = 'license:' + stamp.padEnd(40, '0').replace(/[^a-f0-9]/g, 'a').slice(0, 40);
+await page.click('text=+ Admin license alapján');
+await page.fill('.modal input >> nth=0', lic);
+await page.fill('.modal input >> nth=1', `Lic ${stamp}`);
+await page.selectOption('.modal select', { label: 'Moderator (40)' });
+await page.click('.modal .btn.primary');
+await page.waitForSelector(`td:has-text("${lic}")`, { timeout: 5000 }).then(() => check(true, 'license-based admin added without an e-mail'), () => check(false, 'license-based admin added without an e-mail'));
+const conn = await game('POST', '/players/connect', { name: `Lic ${stamp}`, identifiers: [lic] });
+check(conn.data?.admin?.role === 'moderator', 'the game server gets the rights on connect');
+const refresh = (await game('GET', '/commands')).data.commands.some((c) => c.type === 'admin_refresh' && c.payload.identifiers.includes(lic));
+check(refresh, 'online players are refreshed through an admin_refresh command');
+page.once('dialog', (d) => d.accept());
+await page.click(`tr:has-text("${lic}") >> text=Elvétel`);
+await page.waitForSelector(`td:has-text("${lic}")`, { state: 'detached', timeout: 5000 }).then(() => check(true, 'license-based admin removed'), () => check(false, 'license-based admin removed'));
+await page.screenshot({ path: path.join(OUT, 'web-admins-license.png'), fullPage: true });
 
 // ------------------------------------------------------------ mobile layout
 const mobile = await browser.newContext({ viewport: { width: 390, height: 844 }, storageState: await ctx.storageState() });

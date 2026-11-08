@@ -237,20 +237,83 @@ actions['whitelist.remove'] = { 'whitelist.manage', function(src, admin, payload
     return r
 end }
 
-actions['admins.list'] = { 'admins.view', function()
+actions['admins.list'] = { 'admins.view', function(src, admin)
     local onlineAdmins = {}
     for _, p in ipairs(MG.State.list()) do
         local a = Perm.refresh(p.src)
         if a then onlineAdmins[#onlineAdmins + 1] = { id = p.src, name = p.name, role = a.label, level = a.level, source = a.source } end
     end
-    local data = { online = onlineAdmins, members = nil, roles = {} }
+    local data = { online = onlineAdmins, members = nil, gameAdmins = nil, roles = {} }
     for key, r in pairs(Config.Roles) do data.roles[#data.roles + 1] = { key = key, label = r.label, level = r.level } end
     table.sort(data.roles, function(a, b) return a.level > b.level end)
     if MG.Api.enabled() and MG.Api.online then
         local r = MG.Api.await('GET', '/admin/members')
         if r.ok then data.members = r.data.items end
+        local g = MG.Api.await('GET', '/admin/game-admins')
+        if g.ok then
+            data.gameAdmins = g.data.items
+            for _, x in ipairs(data.gameAdmins) do
+                x.identifier = maskIds({ x.identifier }, admin.perms['players.identifiers'] or admin.perms['admins.manage'])[1]
+            end
+        end
     end
     return ok(data)
+end }
+
+-- ------------------------------------------------------------------ identifier-based admins
+local ADMIN_ID = { license = true, license2 = true, fivem = true, discord = true, steam = true }
+
+--- Resolves "12" (online server id) or "license:..." into an identifier and the online player, if any.
+local function adminTarget(raw)
+    raw = U.trim(tostring(raw or ''))
+    local online = tonumber(raw) and MG.State.get(tonumber(raw))
+    if online then
+        return online.idmap.license and ('license:' .. online.idmap.license) or nil, online
+    end
+    local t, v = raw:lower():match('^(%w+):([%w]+)$')
+    if not t or not ADMIN_ID[t] then return nil end
+    local id = t .. ':' .. v
+    for _, p in ipairs(MG.State.list()) do
+        if U.contains(p.identifiers, id) then return id, p end
+    end
+    return id, nil
+end
+Admin.adminTarget = adminTarget
+
+--- Shared by the panel and the console. actorLevel 100 = console.
+function Admin.addGameAdmin(src, actorLevel, target, roleKey, name, note)
+    local role = Config.Roles[roleKey]
+    if not role then return fail('Ismeretlen szerepkör: ' .. tostring(roleKey)) end
+    if actorLevel < 100 and role.level >= actorLevel then return fail('Csak a saját szinted alatti szerepkört adhatod ki.') end
+    local identifier, online = adminTarget(target)
+    if not identifier then return fail('Adj meg egy online játékos ID-t vagy azonosítót (license:…, discord:…, fivem:…, steam:…).') end
+    if online and online.src == tonumber(src) then return fail('Saját magadnak nem adhatsz jogot.') end
+    local r = remote('POST', '/admin/game-admins', {
+        identifier = identifier, name = U.sanitize(name or (online and online.name) or '', 64), roleKey = roleKey,
+        note = U.sanitize(note or '', 300), actor = Perm.actor(src), actorLevel = actorLevel,
+    })
+    if r.ok and online then
+        online.backendAdmin = r.data.grant ~= json.null and r.data.grant or nil
+        local a = Perm.refresh(online.src)
+        TriggerClientEvent('milcsoguard:notice', online.src, ('Anticheat jogosultságot kaptál: %s'):format(a and a.label or role.label))
+    end
+    return r
+end
+
+function Admin.removeGameAdmin(src, actorLevel, target)
+    local identifier, online = adminTarget(target)
+    if not identifier then return fail('Érvénytelen azonosító.') end
+    local r = remote('POST', '/admin/game-admins/remove', { identifier = identifier, actor = Perm.actor(src), actorLevel = actorLevel })
+    if r.ok and online then Citizen.CreateThread(function() MG.Sync.refreshAdmin(online) end) end
+    return r
+end
+
+actions['admins.add'] = { 'admins.manage', function(src, admin, payload)
+    return Admin.addGameAdmin(src, admin.level, payload.target, payload.role, payload.name, payload.note)
+end }
+
+actions['admins.remove'] = { 'admins.manage', function(src, admin, payload)
+    return Admin.removeGameAdmin(src, admin.level, payload.identifier)
 end }
 
 actions['audit.list'] = { 'audit.view', function(src, admin, payload)

@@ -10,7 +10,9 @@ export interface ReplayRow {
   id: string;
   player_id: string | null;
   player_name: string;
-  kind: 'ban' | 'manual';
+  kind: 'ban' | 'manual' | 'detection';
+  detection_id: string | null;
+  detection_type: string | null;
   status: 'requested' | 'uploading' | 'ready' | 'failed';
   error: string | null;
   reason: string;
@@ -29,7 +31,8 @@ export interface ReplayRow {
 }
 
 export const REPLAY_COLUMNS = `r.id, r.player_id, r.player_name, r.kind, r.status, r.error, r.reason, r.ban_id,
-  (SELECT b.public_code FROM bans b WHERE b.id = r.ban_id) AS ban_code, r.requested_by_label, r.mime, r.width, r.height, r.fps,
+  (SELECT b.public_code FROM bans b WHERE b.id = r.ban_id) AS ban_code, r.detection_id,
+  (SELECT d.type FROM detections d WHERE d.id = r.detection_id) AS detection_type, r.requested_by_label, r.mime, r.width, r.height, r.fps,
   r.duration_ms, r.size_bytes, r.part_count, r.created_at, r.completed_at`;
 
 export async function getReplay(db: Queryable, serverId: string, id: string): Promise<ReplayRow> {
@@ -72,6 +75,18 @@ export async function ensureStorage(db: Queryable, serverId: string, incoming: n
     total = await used();
   }
   return evicted;
+}
+
+/** Links replays recorded for a detection once the (queued) detection reaches the backend. */
+export async function linkReplaysToDetections(db: Queryable, serverId: string, byLocalId: Record<string, string>) {
+  const local = Object.keys(byLocalId);
+  if (!local.length) return;
+  await db.query(
+    `UPDATE replays r SET detection_id = d.id FROM detections d
+      WHERE r.server_id = $1 AND r.detection_id IS NULL AND r.detection_local_id = ANY($2::text[])
+        AND d.server_id = $1 AND d.local_id = r.detection_local_id`,
+    [serverId, local],
+  );
 }
 
 /** Links replays that were recorded for a game-side ban once that ban reaches the backend. */

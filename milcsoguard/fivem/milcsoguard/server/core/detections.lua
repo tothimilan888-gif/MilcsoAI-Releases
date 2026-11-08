@@ -62,11 +62,29 @@ local function recentLocalIds(src, max)
     return ids
 end
 
+--[[
+  Asks the player's recorder for the last seconds as evidence for this detection (Config.Replay
+  onDetection). Returns the replay id, or nil when not eligible (disabled, severity too low,
+  recorder not running, cooldown, another capture running).
+]]
+function D.captureEvidence(p, rec, now, onCaptured)
+    local R, c = MG.Replay, Config.Replay
+    if not (R and R.enabled() and c.onDetection) or p.banning or p.removing or p.replayState ~= 'recording' then return nil end
+    if (MG.SEVERITY_RANK[rec.severity] or 0) < (MG.SEVERITY_RANK[c.detectionMinSeverity] or 4) then return nil end
+    if p.lastEvidenceAt and now - p.lastEvidenceAt < c.detectionCooldownSeconds * 1000 then return nil end
+    local id = R.capture(p.src, { kind = 'detection', detectionLocalId = rec.localId, reason = rec.type, onCaptured = onCaptured })
+    if id then
+        p.lastEvidenceAt = now
+        rec.replayId = id
+    end
+    return id
+end
+
 local function execute(p, rec, now)
     local action = rec.action
-    if p.banning then
+    if p.banning or (p.removing and action ~= 'ban') then
         -- already being removed (replay upload in progress): record, but do not act twice
-        rec.actionResult = 'already banned'
+        rec.actionResult = p.banning and 'already banned' or 'already being kicked'
         return
     end
     if action == 'warn' or action == 'monitor' then
@@ -80,7 +98,16 @@ local function execute(p, rec, now)
     elseif action == 'kick' then
         rec.actionResult = (rec.actionResult ~= '' and rec.actionResult .. '; ' or '') .. 'kicked'
         local msg = Config.Detections.kickMessage:format(rec.type)
-        SetTimeout(250, function() DropPlayer(tostring(p.src), msg) end)
+        -- with a replay: drop once it is uploaded (isolated meanwhile), like a ban
+        local id = D.captureEvidence(p, rec, now, function() DropPlayer(tostring(p.src), msg) end)
+        if id then
+            p.removing = true -- only a ban may still follow while the replay uploads
+            if Config.Replay.isolateOnBan then
+                SetTimeout(1000, function() if MG.State.get(p.src) then MG.Replay.isolate(p) end end)
+            end
+        else
+            SetTimeout(250, function() DropPlayer(tostring(p.src), msg) end)
+        end
     elseif action == 'ban' then
         D.breaker:record(now)
         local ban = MG.Bans.create({
@@ -139,7 +166,9 @@ function D.report(src, key, opts)
     local score = Risk.add(p.risk, D.risk, now, points, key, source)
     local distinct = Risk.distinctServerTypes(p.risk, now, D.risk.corroborationWindowMs)
     local action, note = Risk.decide(D.risk, {
-        moduleAction = m.action, source = source, conclusive = opts.conclusive == true,
+        moduleAction = m.action, source = source,
+        -- banAlone: the admin trusts this module enough to ban on one detection (never for client signals)
+        conclusive = opts.conclusive == true or (m.params.banAlone == true and opts.banAloneEligible ~= false),
         score = score, distinctServerTypes = distinct, breakerOpen = D.breaker:isOpen(now),
     })
 
@@ -169,6 +198,7 @@ function D.report(src, key, opts)
 
     Log.info('%s %s #%d %s -> %s (risk %d)%s', severity, key, src, p.name, action, rec.riskScore, note ~= '' and (' [' .. note .. ']') or '')
     execute(p, rec, now)
+    if action ~= 'kick' and action ~= 'ban' then D.captureEvidence(p, rec, now) end
     pushRing(rec)
     MG.Api.enqueue('detection', {
         localId = rec.localId, type = rec.type, module = rec.module, severity = rec.severity, riskScore = rec.riskScore,

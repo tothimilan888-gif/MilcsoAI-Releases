@@ -42,17 +42,30 @@ function M.analyze(prev, cur, cfg, streaks)
         return streaks[key] or 0
     end
 
-    -- teleport: a single impossible jump
+    -- teleport: a single impossible jump. Measured horizontally plus upwards: falling is free.
     local tp = cfg['movement.teleport']
     if tp and tp.enabled then
-        local limit = inVeh and tp.params.maxDistanceInVehicle or tp.params.maxDistanceOnFoot
-        -- scale with the sampling interval (limits are defined for ~1s)
-        limit = limit * math.max(1, dt)
-        if dist > limit and not (tp.params.ignoreZones and (inZone(prev.pos) or inZone(cur.pos))) then
+        local scale = math.max(1, dt) -- limits are defined per second
+        local falling = vz < -3.5
+        local hLimit
+        if inVeh then
+            hLimit = tp.params.maxDistanceInVehicle
+        elseif falling then
+            hLimit = tp.params.maxDistanceFalling or 90
+        else
+            hLimit = tp.params.maxDistanceOnFoot
+        end
+        hLimit = hLimit * scale
+        local rise = cur.pos.z - prev.pos.z
+        local riseLimit = inVeh and math.huge or (tp.params.maxRiseOnFoot or 25) * scale
+        if (horiz > hLimit or rise > riseLimit) and not (tp.params.ignoreZones and (inZone(prev.pos) or inZone(cur.pos))) then
+            local far = dist >= tp.params.highSeverityDistance
             findings[#findings + 1] = {
                 key = 'movement.teleport',
-                severity = dist >= tp.params.highSeverityDistance and 'HIGH' or nil,
-                evidence = { distance = U.round(dist, 1), seconds = U.round(dt, 2), from = M.vec(prev.pos), to = M.vec(cur.pos), inVehicle = inVeh, limit = U.round(limit, 1) },
+                severity = far and 'HIGH' or nil,
+                -- only a long jump may ban on its own (short ones are often doors / interiors)
+                banAloneEligible = far,
+                evidence = { distance = U.round(dist, 1), horizontal = U.round(horiz, 1), rise = U.round(rise, 1), seconds = U.round(dt, 2), from = M.vec(prev.pos), to = M.vec(cur.pos), inVehicle = inVeh, limit = U.round(hLimit, 1) },
             }
             -- after a teleport the speed checks would double count
             return findings
@@ -72,18 +85,25 @@ function M.analyze(prev, cur, cfg, streaks)
         streaks.speed = nil
     end
 
-    -- noclip: moving while the synced velocity says "standing still", or collision disabled
+    -- noclip / fly. Server-side ped velocity is often reported as zero on foot, so "moving while the
+    -- velocity says still" alone would flag every sprinting player: the speed must be well above sprint.
     local nc = cfg['movement.noclip']
-    if nc and nc.enabled and not inVeh and not cur.attached then
-        local displacement = dist / dt
-        local suspicious = displacement > nc.params.minDisplacementSpeed and reported < nc.params.maxReportedVelocity
-        local collision = nc.params.flagCollisionDisabled and cur.collisionDisabled and displacement > 1.0
-        local n = streak('noclip', suspicious or collision)
+    if nc and nc.enabled and not inVeh and not cur.attached and not prev.attached then
+        local falling = vz < -3.5
+        local fast = not falling and hspeed > nc.params.minDisplacementSpeed and reported < nc.params.maxReportedVelocity
+        local rising = vz > (nc.params.risingSpeed or 4)
+        local collision = nc.params.flagCollisionDisabled and cur.collisionDisabled and prev.collisionDisabled
+            and not falling and hspeed > (nc.params.collisionMinSpeed or 4)
+        local n = streak('noclip', fast or rising or collision)
         if n >= nc.params.consecutive then
             streaks.noclip = nil
             findings[#findings + 1] = {
                 key = 'movement.noclip',
-                evidence = { displacementSpeed = U.round(displacement, 2), reportedVelocity = U.round(reported, 2), collisionDisabled = cur.collisionDisabled == true, verticalSpeed = U.round(vz, 2), samples = n },
+                evidence = {
+                    reason = rising and 'rising' or (fast and 'fast' or 'collision_disabled'),
+                    horizontalSpeed = U.round(hspeed, 2), reportedVelocity = U.round(reported, 2), collisionDisabled = cur.collisionDisabled == true,
+                    verticalSpeed = U.round(vz, 2), samples = n,
+                },
             }
         end
     else
@@ -150,7 +170,7 @@ local function tick(p, now)
     p.streaks = p.streaks or {}
     if now < (p.graceUntil or 0) then return end
     for _, f in ipairs(M.analyze(prev, cur, MG.Detections.modules, p.streaks)) do
-        MG.Detections.report(p.src, f.key, { evidence = f.evidence, severity = f.severity })
+        MG.Detections.report(p.src, f.key, { evidence = f.evidence, severity = f.severity, banAloneEligible = f.banAloneEligible })
     end
 
     -- super jump is a direct synced flag

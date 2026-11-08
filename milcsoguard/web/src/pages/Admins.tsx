@@ -4,7 +4,7 @@ import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { useCan, useServer } from '../lib/server';
 import { fmtRelative } from '../lib/format';
-import type { Member, Role } from '../lib/types';
+import type { GameAdmin, Member, Role } from '../lib/types';
 import { useToast } from '../lib/toast';
 import { PageHeader } from '../components/Layout';
 import { Badge, Empty, ErrorState, FieldError, Loading, Modal } from '../components/ui';
@@ -42,6 +42,61 @@ function RoleEditor({ role, perms, onClose }: { role: Role | null; perms: { key:
   );
 }
 
+/** Admins identified by a FiveM identifier: in-game rights only, no web account needed. */
+function GameAdminsSection({ assignable }: { assignable: Role[] }) {
+  const server = useServer();
+  const can = useCan();
+  const toast = useToast();
+  const qc = useQueryClient();
+  const list = useQuery({ queryKey: ['game-admins', server.id], queryFn: () => api<{ items: GameAdmin[] }>('GET', `/servers/${server.id}/game-admins`) });
+  const [adding, setAdding] = useState(false);
+  const [form, setForm] = useState({ identifier: '', name: '', roleId: '', note: '' });
+  const invalidate = () => void qc.invalidateQueries({ queryKey: ['game-admins', server.id] });
+  const add = useMutation({
+    mutationFn: () => api('POST', `/servers/${server.id}/game-admins`, form),
+    onSuccess: () => { toast('Admin jog megadva. Ha a játékos online, pár másodpercen belül érvényes.', 'success'); setAdding(false); invalidate(); },
+  });
+  const remove = useMutation({
+    mutationFn: (id: string) => api('DELETE', `/servers/${server.id}/game-admins/${id}`),
+    onSuccess: () => { toast('Admin jog elvéve', 'success'); invalidate(); },
+    onError: (e) => toast((e as Error).message, 'error'),
+  });
+  return (
+    <section className="card flush">
+      <div className="card-head pad">
+        <h2>Játékbeli adminok (license alapján)</h2>
+        {can('admins.manage') && <button className="btn sm primary" onClick={() => { setForm({ identifier: '', name: '', roleId: assignable[assignable.length - 1]?.id ?? '', note: '' }); setAdding(true); }}>+ Admin license alapján</button>}
+      </div>
+      <p className="muted small pad">Nem kell hozzá e-mail vagy webes fiók: a jog csak a játékon belüli panelre és az admin eszközökre vonatkozik. Online játékosnál pár másodpercen belül érvényes.</p>
+      {list.isLoading ? <Loading /> : list.error ? <ErrorState error={list.error} /> : list.data!.items.length === 0 ? <Empty title="Még nincs license alapú admin" /> : (
+        <div className="table-wrap"><table>
+          <thead><tr><th>Név</th><th>Azonosító</th><th>Szerepkör</th><th>Adta</th><th>Megjegyzés</th><th /></tr></thead>
+          <tbody>{list.data!.items.map((g) => (
+            <tr key={g.id}>
+              <td><b>{g.name || '–'}</b></td>
+              <td className="mono small">{g.identifier}</td>
+              <td><Badge tone="accent">{g.role_name}</Badge></td>
+              <td className="small">{g.created_by_label}<div className="muted">{fmtRelative(g.created_at)}</div></td>
+              <td className="small">{g.note}</td>
+              <td className="actions">{g.manageable && <button className="btn sm danger" onClick={() => { if (window.confirm(`Elveszed ${g.name || g.identifier} admin jogát?`)) remove.mutate(g.id); }}>Elvétel</button>}</td>
+            </tr>
+          ))}</tbody>
+        </table></div>
+      )}
+      {adding && (
+        <Modal title="Admin jog license alapján" onClose={() => setAdding(false)} footer={<><button className="btn ghost" onClick={() => setAdding(false)}>Mégse</button><button className="btn primary" disabled={add.isPending || !form.identifier.trim() || !form.roleId} onClick={() => add.mutate()}>Hozzáadás</button></>}>
+          <label className="field"><span>Azonosító</span><input value={form.identifier} onChange={(e) => setForm({ ...form, identifier: e.target.value })} placeholder="license:… (vagy discord:…, fivem:…, steam:…)" /></label>
+          <p className="muted small">A license a Játékosok oldalon, a játékos profilján látszik (players.identifiers jog kell hozzá), vagy a txAdminban.</p>
+          <label className="field"><span>Név (opcionális)</span><input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} maxLength={64} /></label>
+          <label className="field"><span>Szerepkör</span><select value={form.roleId} onChange={(e) => setForm({ ...form, roleId: e.target.value })}>{assignable.map((r) => <option key={r.id} value={r.id}>{r.name} ({r.level})</option>)}</select></label>
+          <label className="field"><span>Megjegyzés</span><input value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} maxLength={300} /></label>
+          <FieldError error={add.error} />
+        </Modal>
+      )}
+    </section>
+  );
+}
+
 export function AdminsPage() {
   const server = useServer();
   const can = useCan();
@@ -73,7 +128,7 @@ export function AdminsPage() {
   const assignable = (roles.data?.items ?? []).filter((r) => r.assignable);
   return (
     <>
-      <PageHeader title="Adminok és jogosultságok" subtitle="Senki nem módosíthatja a saját szerepkörét, és csak a saját szintje alatti szerepkört oszthatja ki." actions={can('admins.manage') && <button className="btn primary" onClick={() => { setForm({ email: '', username: '', roleId: assignable[assignable.length - 1]?.id ?? '' }); setAdding(true); }}>+ Admin hozzáadása</button>} />
+      <PageHeader title="Adminok és jogosultságok" subtitle="Senki nem módosíthatja a saját szerepkörét, és csak a saját szintje alatti szerepkört oszthatja ki." actions={can('admins.manage') && <button className="btn primary" onClick={() => { setForm({ email: '', username: '', roleId: assignable[assignable.length - 1]?.id ?? '' }); setAdding(true); }}>+ Webes admin (e-mail)</button>} />
       <section className="card flush">
         {members.isLoading ? <Loading /> : members.error ? <ErrorState error={members.error} /> : (
           <div className="table-wrap"><table>
@@ -97,6 +152,7 @@ export function AdminsPage() {
           </table></div>
         )}
       </section>
+      <GameAdminsSection assignable={assignable} />
       <section className="card">
         <div className="card-head"><h2>Szerepkörök</h2>{can('roles.manage') && <button className="btn sm" onClick={() => setEditRole('new')}>+ Egyedi szerepkör</button>}</div>
         {roles.isLoading ? <Loading /> : roles.error ? <ErrorState error={roles.error} /> : roles.data!.items.length === 0 ? <Empty title="Nincs szerepkör" /> : (

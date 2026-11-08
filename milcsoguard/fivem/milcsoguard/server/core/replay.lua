@@ -51,7 +51,7 @@ local function upload(job, parts, err)
     Citizen.CreateThread(function()
         local meta = {
             id = job.id, kind = job.kind, playerName = job.playerName, identifiers = job.identifiers, reason = job.reason,
-            banId = isUuid(job.banId) and job.banId or nil, banLocalId = job.banLocalId, requestedBy = job.actor,
+            banId = isUuid(job.banId) and job.banId or nil, banLocalId = job.banLocalId, detectionLocalId = job.detectionLocalId, requestedBy = job.actor,
             width = job.width, height = job.height, fps = job.fps,
         }
         local r = MG.Api.await('POST', '/replays', meta)
@@ -135,7 +135,7 @@ function Replay.capture(src, opts)
     if not isUuid(id) or Replay.jobs[id] then return nil, 'invalid id' end
     local job = {
         id = id, src = p.src, kind = opts.kind or 'manual', reason = U.sanitize(opts.reason or '', 500),
-        banId = opts.banId, banLocalId = opts.banLocalId, actor = opts.actor, requestedBy = opts.requestedBy,
+        banId = opts.banId, banLocalId = opts.banLocalId, detectionLocalId = opts.detectionLocalId, actor = opts.actor, requestedBy = opts.requestedBy,
         playerName = p.name, identifiers = U.filterIdentifiers(p.identifiers, U.toSet(Config.Api.excludeIdentifierTypes)),
         parts = {}, chars = 0, manifest = nil, finished = false, onCaptured = opts.onCaptured,
     }

@@ -30,6 +30,16 @@ A táblázat a kódból generált (`backend/src/lib/permissions.ts` → `SYSTEM_
 | `integrations.manage` | Integrációk (Discord webhook) kezelése | ✅ | ✅ | ✅ | – | – | – | – |
 | `servers.manage` | Szerver beállításai, adatmegőrzés, törlés | ✅ | – | – | – | – | – | – |
 
+## Játékbeli admin license alapján (webes fiók nélkül)
+
+Adminjog adható egy FiveM azonosítóra is (`license:`, `license2:`, `fivem:`, `discord:`, `steam:` – IP és hardver token soha), e-mail és webes fiók nélkül. Az így kapott szerepkör jogai **csak a játékon belül** érvényesek (panel, admin eszközök); a dashboardra nem lehet vele belépni.
+
+* **Web:** Adminok → *Játékbeli adminok (license alapján)* → *+ Admin license alapján*.
+* **Játékon belül:** Panel → Adminok → online játékos ID-je vagy `license:…` + szerepkör → *Admin jog adása*.
+* **Szerverkonzol:** `milcsoguard addadmin <ID|license:…> <szerepkör> [név]`, `milcsoguard removeadmin <ID|license:…>`.
+* Ugyanazok a szabályok, mint a webes tagoknál: `admins.manage` kell, csak a saját szint **alatti** szerepkör adható és vehető el (Owner kivétel), és a szerepkör nem tartalmazhat olyan jogot, ami a kiosztónak nincs. Online játékosnál a jog pár másodpercen belül érvényes (`admin_refresh` parancs), különben a következő csatlakozáskor. Minden változás auditált (`game_admin.add/update/remove`).
+* Ha valakinek webes fiókja és license-es joga is van, az erősebb érvényes.
+
 ## Szabályok (backend kényszeríti, nem a frontend)
 
 1. Minden szerverhez kötött végpont a `requireServer(permission)` ellenőrzésen megy át. Nem tag felhasználó **404**-et kap (a szerverazonosítók nem kitalálhatók), tag jogosultság nélkül **403**-at.

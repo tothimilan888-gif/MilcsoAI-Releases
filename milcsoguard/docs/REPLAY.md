@@ -18,7 +18,8 @@ darabok base64-ben, 240 KB-os csomagokban ─►  ellenőrzi: csak attól a ját
 ```
 
 * **Mi kerül a felvételre:** csak a játék képe (a GTA back buffere). Nem kerül rá az asztal, más ablak, mikrofon, sőt a NUI (például a telefon UI) sem. A natívokkal rajzolt Lua menük (DrawText/DrawRect) a játékkép részei, ezért **látszanak**. A DirectX overlay-ként rajzolt külső menük általában nem.
-* **Mikor hagyja el a gépet:** csak bannál (ha `Config.Replay.onBan = true`) vagy admin kérésre (`replays.request` jog, auditálva). Egyébként a memóriában marad és felülíródik.
+* **Mikor hagyja el a gépet:** bannál (`Config.Replay.onBan`), HIGH vagy súlyosabb detektálásnál bizonyítékként (`Config.Replay.onDetection`, játékosonként legfeljebb `detectionCooldownSeconds`-onként egyszer), vagy admin kérésre (`replays.request` jog, auditálva). Egyébként a memóriában marad és felülíródik.
+* **Detektálás bizonyítéka:** a felvétel a detektáláshoz kötődik (web: Élő detektálások → detektálás → *Videós bizonyíték*; Visszajátszások → *Detektálás* fül). Ha a detektálás **kickkel** jár, a kick a feltöltés után történik (közben saját routing bucket + fagyasztás), mint a bannál; ha közben egy bannoló detektálás jön, a ban azonnal érvényesül.
 * **Formátum:** WebM (VP8), alapból 854×480, 15 fps, ~700 kbit/s, ami 15 másodpercre ~1,3 MB. Minden darab önálló fájl, a lejátszó egymás után játssza le őket. Az utolsó darab vége a ban vagy a kérés pillanata.
 * **Ban közben:** a ban azonnal érvénybe lép (helyi gyorsítótár), ezért az újracsatlakozás ilyenkor már elutasított. A játékos egy saját routing bucketbe kerül és lefagy, hogy a feltöltés alatt se zavarjon senkit. Ezután a szerver lecsatlakoztatja, legkésőbb `uploadTimeoutSeconds` (25 mp) után. Ha a kliens felvevője nem fut, nincs várakozás, a ledobás azonnal megtörténik.
 
@@ -46,6 +47,9 @@ darabok base64-ben, 240 KB-os csomagokban ─►  ellenőrzi: csak attól a ját
 | `bitrateKbps` | 700 | Videó bitráta |
 | `flipY` | `false` | Függőleges fordítás felvételkor (csak ha az új felvételek fejjel lefelé állnak) |
 | `onBan` | `true` | Ban előtt bekéri a felvételt |
+| `onDetection` | `true` | Detektálásnál is bekéri bizonyítéknak |
+| `detectionMinSeverity` | `HIGH` | Ettől a súlyosságtól |
+| `detectionCooldownSeconds` | 120 | Játékosonként legfeljebb ennyi időnként egy detektálási felvétel |
 | `isolateOnBan` | `true` | Saját routing bucket + fagyasztás a feltöltés alatt |
 | `uploadTimeoutSeconds` | 25 | Ennyi idő után a bannolt játékos mindenképp lecsatlakozik |
 | `uploadBps` | 500000 | Kliens → szerver feltöltési sávszél (bájt/s) |
